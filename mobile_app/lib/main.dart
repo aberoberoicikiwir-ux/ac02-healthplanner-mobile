@@ -402,18 +402,37 @@ class ProfilTab extends StatelessWidget {
   }
 }
 
-// ===== Workout Plan & Meal Plan (sama seperti sebelumnya) =====
+// ===== Screen 1: Workout Plan (Katalog) — WAJIB StatelessWidget =====
 class WorkoutPlanScreen extends StatelessWidget {
   const WorkoutPlanScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Dipangkas jadi 3 item sesuai requirement tugas
     final workouts = [
-      {'name': 'Push Up', 'detail': '3 set x 15 repetisi'},
-      {'name': 'Squat', 'detail': '3 set x 20 repetisi'},
-      {'name': 'Plank', 'detail': '3 set x 45 detik'},
-      {'name': 'Jogging', 'detail': '20 menit'},
+      {
+        'name': 'Push Up',
+        'detail': '3 set x 15 repetisi',
+        'description':
+            'Latihan ini melatih otot dada, bahu, dan trisep. Jaga posisi '
+                'tubuh tetap lurus dari kepala hingga tumit selama gerakan.',
+      },
+      {
+        'name': 'Squat',
+        'detail': '3 set x 20 repetisi',
+        'description':
+            'Latihan ini melatih otot paha dan bokong. Pastikan lutut '
+                'tidak melewati ujung jari kaki saat menekuk.',
+      },
+      {
+        'name': 'Plank',
+        'detail': '3 set x 45 detik',
+        'description':
+            'Latihan ini melatih otot inti (core). Jaga punggung tetap '
+                'rata, jangan biarkan pinggul turun atau naik.',
+      },
     ];
+
     return Scaffold(
       appBar: AppBar(title: const Text('Workout Plan')),
       body: ListView.builder(
@@ -426,10 +445,121 @@ class WorkoutPlanScreen extends StatelessWidget {
               leading: const Icon(Icons.fitness_center, color: Colors.teal),
               title: Text(item['name']!),
               subtitle: Text(item['detail']!),
-              trailing: Checkbox(value: false, onChanged: (_) {}),
+              trailing: const Icon(Icons.chevron_right),
+              // Klik title/tile -> pindah ke Screen 2 pakai Navigator.push
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => WorkoutDetailScreen(
+                      name: item['name']!,
+                      detail: item['detail']!,
+                      description: item['description']!,
+                    ),
+                  ),
+                );
+              },
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// ===== Screen 2: Detail Katalog — WAJIB StatefulWidget =====
+class WorkoutDetailScreen extends StatefulWidget {
+  final String name;
+  final String detail;
+  final String description;
+
+  const WorkoutDetailScreen({
+    super.key,
+    required this.name,
+    required this.detail,
+    required this.description,
+  });
+
+  @override
+  State<WorkoutDetailScreen> createState() => _WorkoutDetailScreenState();
+}
+
+class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
+  // Ini "state" yang berubah interaktif waktu tombol ditekan
+  bool _isDone = false;
+
+  void _toggleDone() {
+    setState(() {
+      _isDone = !_isDone; // membalik nilai true/false
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      // AppBar otomatis kasih tombol back bawaan (sesuai requirement e)
+      appBar: AppBar(title: Text(widget.name)),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column( // wajib pakai Column (requirement c)
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Icon back tambahan di body (requirement d - poin 1)
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const Text('Kembali ke Katalog',
+                    style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Text nama & detail (requirement d - poin 2)
+            Text(
+              widget.name,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.detail,
+              style: const TextStyle(fontSize: 16, color: Colors.teal),
+            ),
+            const SizedBox(height: 16),
+
+            // Container pastel + padding buat deskripsi (requirement d - poin 3)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.teal.shade50, // warna pastel
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                widget.description,
+                style: const TextStyle(fontSize: 14, height: 1.4),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Tombol interaktif -> ubah STATE saat ditekan
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _toggleDone,
+                icon: Icon(_isDone ? Icons.check_circle : Icons.circle_outlined),
+                label: Text(_isDone ? 'Selesai ✓' : 'Tandai Selesai'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isDone ? Colors.green : Colors.teal,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

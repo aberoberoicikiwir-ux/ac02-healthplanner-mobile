@@ -18,3 +18,5 @@ Sistem monitoring kebugaran dengan modul Klien dan PT (Personal Trainer). PT mem
 2. Kerja di folder bagian masing-masing, jangan edit folder orang lain
 3. `git pull` sebelum mulai kerja tiap sesi
 4. Gabung ke `main` lewat Pull Request
+
+
