@@ -2,6 +2,9 @@
 
 Bagian mobile app dari capstone AC-02 Personalized Health & Workout Planner, tim A25-CS034.
 
+## Desain Figma
+[Healthmaxxing - Health care app](https://www.figma.com/design/hM7Ir66oU2N3Y7ji3qnsT5/Healthmaxxing---Health-care-app?node-id=1-131&p=f&t=H0Xng5JvxTnMfXN9-0)
+
 ## Cara Setup Project
 
 1. Pastikan Flutter SDK sudah terinstall (`flutter --version` untuk cek).
