@@ -25,9 +25,10 @@ class WorkoutDetailScreen extends StatelessWidget {
             final workout =
                 workoutProvider.workouts.firstWhere((w) => w.id == workoutId);
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            return SingleChildScrollView(
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
                 Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: IconButton(
@@ -103,6 +104,7 @@ class WorkoutDetailScreen extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
             );
           },
         ),
