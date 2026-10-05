@@ -24,6 +24,15 @@ class HealthPlannerApp extends StatelessWidget {
       title: 'Healthmaxxing',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.blue),
+     
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(1.0),
+          ),
+          child: child!,
+        );
+      },
       home: const LoginScreen(),
     );
   }
