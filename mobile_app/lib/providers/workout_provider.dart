@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import '../data/repositories/workout_repository.dart';
 import '../models/workout.dart';
 
-/// Global State untuk latihan. Sumber datanya sekarang database (Drift),
-/// bukan list yang ditulis manual di sini.
+/// Global State untuk latihan. Sumber datanya database (Drift).
 class WorkoutProvider extends ChangeNotifier {
   WorkoutProvider(this._repository) {
     // Dengarkan stream database: tiap tabel berubah -> list diperbarui
@@ -14,7 +13,7 @@ class WorkoutProvider extends ChangeNotifier {
       _workouts = data;
       notifyListeners();
     });
-    refresh();
+    sync();
   }
 
   final WorkoutRepository _repository;
@@ -31,6 +30,9 @@ class WorkoutProvider extends ChangeNotifier {
   int get completedCount => _workouts.where((w) => w.isDone).length;
   int get totalCount => _workouts.length;
 
+  /// Jumlah baris dengan perubahan lokal yang belum dikirim ke server.
+  int get pendingCount => _workouts.where((w) => !w.synced).length;
+
   /// Waktu sinkron terakhir (jam lokal), null kalau belum pernah sinkron.
   DateTime? get lastSynced {
     if (_workouts.isEmpty) return null;
@@ -41,14 +43,16 @@ class WorkoutProvider extends ChangeNotifier {
     return DateTime.fromMillisecondsSinceEpoch(latest, isUtc: true).toLocal();
   }
 
-  Future<void> refresh() async {
+  /// Sinkronisasi dua arah: kirim perubahan lokal, lalu ambil data terbaru.
+  Future<void> sync() async {
     if (_isLoading) return;
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      await _repository.refreshFromServer();
+      await _repository.pushPending();
+      await _repository.pullFromServer();
     } catch (_) {
       _errorMessage = 'Gagal sinkron. Menampilkan data tersimpan.';
     }
@@ -59,9 +63,24 @@ class WorkoutProvider extends ChangeNotifier {
 
   Future<void> toggleDone(String id) async {
     final workout = _workouts.firstWhere((w) => w.id == id);
-    // Cukup tulis ke database; stream di atas yang akan memperbarui UI.
+    // Cukup tulis ke database; stream di atas yang memperbarui UI.
     await _repository.setDone(id, !workout.isDone);
   }
+
+  Future<void> addWorkout({
+    required String name,
+    required String detail,
+  }) async {
+    final id = 'local-${DateTime.now().toUtc().millisecondsSinceEpoch}';
+    await _repository.addWorkout(
+      id: id,
+      name: name.trim(),
+      detail: detail.trim(),
+      benefit: 'Latihan tambahan yang dicatat sendiri.',
+    );
+  }
+
+  Future<void> deleteWorkout(String id) => _repository.deleteWorkout(id);
 
   @override
   void dispose() {

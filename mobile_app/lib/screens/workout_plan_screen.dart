@@ -12,22 +12,60 @@ class WorkoutPlanScreen extends StatelessWidget {
     return '$h:$m';
   }
 
-  // Baris kecil status sinkronisasi (loading / offline / terakhir sinkron)
+  Future<void> _showAddDialog(BuildContext context) async {
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => const _AddWorkoutDialog(),
+    );
+    if (result == null || !context.mounted) return;
+    await context.read<WorkoutProvider>().addWorkout(
+          name: result['name']!,
+          detail: result['detail']!,
+        );
+  }
+
+  // Status sinkronisasi (loading / offline / terakhir sinkron) dan
+  // jumlah perubahan yang belum terkirim.
   Widget _buildStatus(WorkoutProvider provider) {
+    Widget text;
     if (provider.isLoading) {
-      return const Text('Menyinkronkan data...',
+      text = const Text('Menyinkronkan data...',
           style: TextStyle(color: Colors.white70, fontSize: 12));
-    }
-    if (provider.errorMessage != null) {
-      return Text(provider.errorMessage!,
+    } else if (provider.errorMessage != null) {
+      text = Text(provider.errorMessage!,
           style: const TextStyle(color: Color(0xFFFFD08A), fontSize: 12));
-    }
-    final synced = provider.lastSynced;
-    if (synced != null) {
-      return Text('Terakhir sinkron: ${_formatTime(synced)}',
+    } else if (provider.lastSynced != null) {
+      text = Text('Terakhir sinkron: ${_formatTime(provider.lastSynced!)}',
           style: const TextStyle(color: Colors.white60, fontSize: 12));
+    } else {
+      text = const SizedBox.shrink();
     }
-    return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        text,
+        if (provider.pendingCount > 0 && !provider.isLoading)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.cloud_upload_outlined,
+                  size: 14, color: Color(0xFFFFD08A)),
+              const SizedBox(width: 6),
+              Text('${provider.pendingCount} perubahan belum tersinkron',
+                  style: const TextStyle(
+                      color: Color(0xFFFFD08A), fontSize: 12)),
+              TextButton(
+                onPressed: provider.sync,
+                child: const Text('Sinkronkan',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+      ],
+    );
   }
 
   // Empty state: belum ada data sama sekali di database
@@ -59,6 +97,13 @@ class WorkoutPlanScreen extends StatelessWidget {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
+      // Tombol "+" : tambah latihan tambahan di luar rencana
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: const Color(0xFF3B82F6),
+        foregroundColor: Colors.white,
+        onPressed: () => _showAddDialog(context),
+        child: const Icon(Icons.add),
+      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -87,20 +132,21 @@ class WorkoutPlanScreen extends StatelessWidget {
                         _buildStatus(workoutProvider),
                         const SizedBox(height: 8),
                         Expanded(
-                          // Tarik ke bawah = sinkron ulang dari server
+                          // Tarik ke bawah = sinkron ulang dengan server
                           child: RefreshIndicator(
-                            onRefresh: workoutProvider.refresh,
+                            onRefresh: workoutProvider.sync,
                             child: workouts.isEmpty
                                 ? _buildEmpty(workoutProvider)
                                 : ListView.builder(
                                     physics:
                                         const AlwaysScrollableScrollPhysics(),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 20),
+                                    padding: const EdgeInsets.fromLTRB(
+                                        20, 0, 20, 90),
                                     itemCount: workouts.length,
                                     itemBuilder: (context, index) {
                                       final w = workouts[index];
-                                      return Container(
+
+                                      final card = Container(
                                         margin:
                                             const EdgeInsets.only(bottom: 14),
                                         padding: const EdgeInsets.all(12),
@@ -130,11 +176,31 @@ class WorkoutPlanScreen extends StatelessWidget {
                                           subtitle: Text(w.detail,
                                               style: const TextStyle(
                                                   color: Colors.white60)),
-                                          trailing: w.isDone
-                                              ? const Icon(Icons.check_circle,
-                                                  color: Colors.greenAccent)
-                                              : const Icon(Icons.chevron_right,
-                                                  color: Colors.white70),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              // Ikon awan = belum tersinkron
+                                              if (!w.synced)
+                                                const Padding(
+                                                  padding:
+                                                      EdgeInsets.only(right: 8),
+                                                  child: Icon(
+                                                      Icons
+                                                          .cloud_upload_outlined,
+                                                      size: 18,
+                                                      color:
+                                                          Color(0xFFFFD08A)),
+                                                ),
+                                              w.isDone
+                                                  ? const Icon(
+                                                      Icons.check_circle,
+                                                      color:
+                                                          Colors.greenAccent)
+                                                  : const Icon(
+                                                      Icons.chevron_right,
+                                                      color: Colors.white70),
+                                            ],
+                                          ),
                                           onTap: () {
                                             Navigator.push(
                                               context,
@@ -145,6 +211,33 @@ class WorkoutPlanScreen extends StatelessWidget {
                                             );
                                           },
                                         ),
+                                      );
+
+                                      // Rencana dari server tidak bisa dihapus
+                                      if (!w.isLocal) return card;
+
+                                      // Latihan buatan sendiri: geser ke kiri = hapus
+                                      return Dismissible(
+                                        key: ValueKey(w.id),
+                                        direction: DismissDirection.endToStart,
+                                        background: Container(
+                                          margin:
+                                              const EdgeInsets.only(bottom: 14),
+                                          padding:
+                                              const EdgeInsets.only(right: 24),
+                                          alignment: Alignment.centerRight,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFE24B4A),
+                                            borderRadius:
+                                                BorderRadius.circular(16),
+                                          ),
+                                          child: const Icon(
+                                              Icons.delete_outline,
+                                              color: Colors.white),
+                                        ),
+                                        onDismissed: (_) => workoutProvider
+                                            .deleteWorkout(w.id),
+                                        child: card,
                                       );
                                     },
                                   ),
@@ -159,6 +252,75 @@ class WorkoutPlanScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Dialog tambah latihan. Dibuat StatefulWidget supaya controller
+/// teksnya di-dispose dengan benar.
+class _AddWorkoutDialog extends StatefulWidget {
+  const _AddWorkoutDialog();
+
+  @override
+  State<_AddWorkoutDialog> createState() => _AddWorkoutDialogState();
+}
+
+class _AddWorkoutDialogState extends State<_AddWorkoutDialog> {
+  final _nameController = TextEditingController();
+  final _detailController = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _detailController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Nama latihan wajib diisi');
+      return;
+    }
+    final detail = _detailController.text.trim();
+    Navigator.pop(context, {
+      'name': name,
+      'detail': detail.isEmpty ? 'Latihan tambahan' : detail,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Tambah latihan'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _nameController,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: 'Nama latihan',
+              errorText: _error,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _detailController,
+            decoration: const InputDecoration(
+              labelText: 'Detail (mis. 3 sets x 10 reps)',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Batal'),
+        ),
+        ElevatedButton(onPressed: _submit, child: const Text('Simpan')),
+      ],
     );
   }
 }

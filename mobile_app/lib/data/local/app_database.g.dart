@@ -71,6 +71,31 @@ class $WorkoutEntriesTable extends WorkoutEntries
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _syncedMeta = const VerificationMeta('synced');
+  @override
+  late final GeneratedColumn<bool> synced = GeneratedColumn<bool>(
+    'synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -79,6 +104,8 @@ class $WorkoutEntriesTable extends WorkoutEntries
     benefit,
     isDone,
     lastFetched,
+    updatedAt,
+    synced,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -138,6 +165,18 @@ class $WorkoutEntriesTable extends WorkoutEntries
     } else if (isInserting) {
       context.missing(_lastFetchedMeta);
     }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('synced')) {
+      context.handle(
+        _syncedMeta,
+        synced.isAcceptableOrUnknown(data['synced']!, _syncedMeta),
+      );
+    }
     return context;
   }
 
@@ -171,6 +210,14 @@ class $WorkoutEntriesTable extends WorkoutEntries
         DriftSqlType.int,
         data['${effectivePrefix}last_fetched'],
       )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      synced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}synced'],
+      )!,
     );
   }
 
@@ -187,9 +234,15 @@ class WorkoutEntry extends DataClass implements Insertable<WorkoutEntry> {
   final String benefit;
   final bool isDone;
 
-  /// Penanda cache: kapan data ini terakhir diambil dari server.
-  /// Disimpan dalam UTC milliseconds (DateTime.now().toUtc().millisecondsSinceEpoch).
+  /// Penanda cache: kapan data ini terakhir diambil dari server (UTC millis).
   final int lastFetched;
+
+  /// Schema v2: kapan baris ini terakhir diubah di perangkat (UTC millis).
+  final int updatedAt;
+
+  /// Schema v2: false = ada perubahan lokal yang belum dikirim ke server.
+  /// Setiap penulisan lokal dimulai dengan synced = false (pola offline-first).
+  final bool synced;
   const WorkoutEntry({
     required this.id,
     required this.name,
@@ -197,6 +250,8 @@ class WorkoutEntry extends DataClass implements Insertable<WorkoutEntry> {
     required this.benefit,
     required this.isDone,
     required this.lastFetched,
+    required this.updatedAt,
+    required this.synced,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -207,6 +262,8 @@ class WorkoutEntry extends DataClass implements Insertable<WorkoutEntry> {
     map['benefit'] = Variable<String>(benefit);
     map['is_done'] = Variable<bool>(isDone);
     map['last_fetched'] = Variable<int>(lastFetched);
+    map['updated_at'] = Variable<int>(updatedAt);
+    map['synced'] = Variable<bool>(synced);
     return map;
   }
 
@@ -218,6 +275,8 @@ class WorkoutEntry extends DataClass implements Insertable<WorkoutEntry> {
       benefit: Value(benefit),
       isDone: Value(isDone),
       lastFetched: Value(lastFetched),
+      updatedAt: Value(updatedAt),
+      synced: Value(synced),
     );
   }
 
@@ -233,6 +292,8 @@ class WorkoutEntry extends DataClass implements Insertable<WorkoutEntry> {
       benefit: serializer.fromJson<String>(json['benefit']),
       isDone: serializer.fromJson<bool>(json['isDone']),
       lastFetched: serializer.fromJson<int>(json['lastFetched']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      synced: serializer.fromJson<bool>(json['synced']),
     );
   }
   @override
@@ -245,6 +306,8 @@ class WorkoutEntry extends DataClass implements Insertable<WorkoutEntry> {
       'benefit': serializer.toJson<String>(benefit),
       'isDone': serializer.toJson<bool>(isDone),
       'lastFetched': serializer.toJson<int>(lastFetched),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'synced': serializer.toJson<bool>(synced),
     };
   }
 
@@ -255,6 +318,8 @@ class WorkoutEntry extends DataClass implements Insertable<WorkoutEntry> {
     String? benefit,
     bool? isDone,
     int? lastFetched,
+    int? updatedAt,
+    bool? synced,
   }) => WorkoutEntry(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -262,6 +327,8 @@ class WorkoutEntry extends DataClass implements Insertable<WorkoutEntry> {
     benefit: benefit ?? this.benefit,
     isDone: isDone ?? this.isDone,
     lastFetched: lastFetched ?? this.lastFetched,
+    updatedAt: updatedAt ?? this.updatedAt,
+    synced: synced ?? this.synced,
   );
   WorkoutEntry copyWithCompanion(WorkoutEntriesCompanion data) {
     return WorkoutEntry(
@@ -273,6 +340,8 @@ class WorkoutEntry extends DataClass implements Insertable<WorkoutEntry> {
       lastFetched: data.lastFetched.present
           ? data.lastFetched.value
           : this.lastFetched,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      synced: data.synced.present ? data.synced.value : this.synced,
     );
   }
 
@@ -284,14 +353,24 @@ class WorkoutEntry extends DataClass implements Insertable<WorkoutEntry> {
           ..write('detail: $detail, ')
           ..write('benefit: $benefit, ')
           ..write('isDone: $isDone, ')
-          ..write('lastFetched: $lastFetched')
+          ..write('lastFetched: $lastFetched, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('synced: $synced')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, detail, benefit, isDone, lastFetched);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    detail,
+    benefit,
+    isDone,
+    lastFetched,
+    updatedAt,
+    synced,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -301,7 +380,9 @@ class WorkoutEntry extends DataClass implements Insertable<WorkoutEntry> {
           other.detail == this.detail &&
           other.benefit == this.benefit &&
           other.isDone == this.isDone &&
-          other.lastFetched == this.lastFetched);
+          other.lastFetched == this.lastFetched &&
+          other.updatedAt == this.updatedAt &&
+          other.synced == this.synced);
 }
 
 class WorkoutEntriesCompanion extends UpdateCompanion<WorkoutEntry> {
@@ -311,6 +392,8 @@ class WorkoutEntriesCompanion extends UpdateCompanion<WorkoutEntry> {
   final Value<String> benefit;
   final Value<bool> isDone;
   final Value<int> lastFetched;
+  final Value<int> updatedAt;
+  final Value<bool> synced;
   final Value<int> rowid;
   const WorkoutEntriesCompanion({
     this.id = const Value.absent(),
@@ -319,6 +402,8 @@ class WorkoutEntriesCompanion extends UpdateCompanion<WorkoutEntry> {
     this.benefit = const Value.absent(),
     this.isDone = const Value.absent(),
     this.lastFetched = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.synced = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   WorkoutEntriesCompanion.insert({
@@ -328,6 +413,8 @@ class WorkoutEntriesCompanion extends UpdateCompanion<WorkoutEntry> {
     required String benefit,
     this.isDone = const Value.absent(),
     required int lastFetched,
+    this.updatedAt = const Value.absent(),
+    this.synced = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -341,6 +428,8 @@ class WorkoutEntriesCompanion extends UpdateCompanion<WorkoutEntry> {
     Expression<String>? benefit,
     Expression<bool>? isDone,
     Expression<int>? lastFetched,
+    Expression<int>? updatedAt,
+    Expression<bool>? synced,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -350,6 +439,8 @@ class WorkoutEntriesCompanion extends UpdateCompanion<WorkoutEntry> {
       if (benefit != null) 'benefit': benefit,
       if (isDone != null) 'is_done': isDone,
       if (lastFetched != null) 'last_fetched': lastFetched,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (synced != null) 'synced': synced,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -361,6 +452,8 @@ class WorkoutEntriesCompanion extends UpdateCompanion<WorkoutEntry> {
     Value<String>? benefit,
     Value<bool>? isDone,
     Value<int>? lastFetched,
+    Value<int>? updatedAt,
+    Value<bool>? synced,
     Value<int>? rowid,
   }) {
     return WorkoutEntriesCompanion(
@@ -370,6 +463,8 @@ class WorkoutEntriesCompanion extends UpdateCompanion<WorkoutEntry> {
       benefit: benefit ?? this.benefit,
       isDone: isDone ?? this.isDone,
       lastFetched: lastFetched ?? this.lastFetched,
+      updatedAt: updatedAt ?? this.updatedAt,
+      synced: synced ?? this.synced,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -395,6 +490,12 @@ class WorkoutEntriesCompanion extends UpdateCompanion<WorkoutEntry> {
     if (lastFetched.present) {
       map['last_fetched'] = Variable<int>(lastFetched.value);
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (synced.present) {
+      map['synced'] = Variable<bool>(synced.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -410,6 +511,8 @@ class WorkoutEntriesCompanion extends UpdateCompanion<WorkoutEntry> {
           ..write('benefit: $benefit, ')
           ..write('isDone: $isDone, ')
           ..write('lastFetched: $lastFetched, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('synced: $synced, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -435,6 +538,8 @@ typedef $$WorkoutEntriesTableCreateCompanionBuilder =
       required String benefit,
       Value<bool> isDone,
       required int lastFetched,
+      Value<int> updatedAt,
+      Value<bool> synced,
       Value<int> rowid,
     });
 typedef $$WorkoutEntriesTableUpdateCompanionBuilder =
@@ -445,6 +550,8 @@ typedef $$WorkoutEntriesTableUpdateCompanionBuilder =
       Value<String> benefit,
       Value<bool> isDone,
       Value<int> lastFetched,
+      Value<int> updatedAt,
+      Value<bool> synced,
       Value<int> rowid,
     });
 
@@ -484,6 +591,16 @@ class $$WorkoutEntriesTableFilterComposer
 
   ColumnFilters<int> get lastFetched => $composableBuilder(
     column: $table.lastFetched,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get synced => $composableBuilder(
+    column: $table.synced,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -526,6 +643,16 @@ class $$WorkoutEntriesTableOrderingComposer
     column: $table.lastFetched,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get synced => $composableBuilder(
+    column: $table.synced,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$WorkoutEntriesTableAnnotationComposer
@@ -556,6 +683,12 @@ class $$WorkoutEntriesTableAnnotationComposer
     column: $table.lastFetched,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get synced =>
+      $composableBuilder(column: $table.synced, builder: (column) => column);
 }
 
 class $$WorkoutEntriesTableTableManager
@@ -597,6 +730,8 @@ class $$WorkoutEntriesTableTableManager
                 Value<String> benefit = const Value.absent(),
                 Value<bool> isDone = const Value.absent(),
                 Value<int> lastFetched = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<bool> synced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WorkoutEntriesCompanion(
                 id: id,
@@ -605,6 +740,8 @@ class $$WorkoutEntriesTableTableManager
                 benefit: benefit,
                 isDone: isDone,
                 lastFetched: lastFetched,
+                updatedAt: updatedAt,
+                synced: synced,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -615,6 +752,8 @@ class $$WorkoutEntriesTableTableManager
                 required String benefit,
                 Value<bool> isDone = const Value.absent(),
                 required int lastFetched,
+                Value<int> updatedAt = const Value.absent(),
+                Value<bool> synced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WorkoutEntriesCompanion.insert(
                 id: id,
@@ -623,6 +762,8 @@ class $$WorkoutEntriesTableTableManager
                 benefit: benefit,
                 isDone: isDone,
                 lastFetched: lastFetched,
+                updatedAt: updatedAt,
+                synced: synced,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

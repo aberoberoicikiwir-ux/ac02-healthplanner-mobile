@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../local/settings_service.dart';
 
 /// API TIRUAN. Alurnya sama seperti API asli (ada delay, bisa gagal),
@@ -49,5 +50,12 @@ class FakeApiService {
             'Keep your back flat, avoid letting your hips sag or rise.',
       },
     ];
+  }
+
+  /// Mengirim perubahan lokal yang belum tersinkron ke server.
+  /// Di backend asli ini akan menjadi POST /workouts/sync dengan body [changes].
+  Future<void> pushWorkouts(List<Map<String, dynamic>> changes) async {
+    await _simulateNetwork();
+    debugPrint('SYNC: server menerima ${changes.length} perubahan -> $changes');
   }
 }
