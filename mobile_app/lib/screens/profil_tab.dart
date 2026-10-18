@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/settings_provider.dart';
+import 'login_screen.dart';
 
-class ProfilTab extends StatefulWidget {
+class ProfilTab extends StatelessWidget {
   const ProfilTab({super.key});
 
   @override
-  State<ProfilTab> createState() => _ProfilTabState();
-}
-
-class _ProfilTabState extends State<ProfilTab> {
-  // State lokal buat toggle notifikasi (sementara, belum nyambung backend)
-  bool _notifOn = true;
-
-  @override
   Widget build(BuildContext context) {
+    // watch = widget ini rebuild otomatis kalau Global State berubah.
+    final settings = context.watch<SettingsProvider>();
+    final auth = context.watch<AuthProvider>();
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -36,15 +36,17 @@ class _ProfilTabState extends State<ProfilTab> {
                 const SizedBox(width: 16),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text('User',
-                        style: TextStyle(
+                  children: [
+                    // Nama diambil dari AuthProvider (hasil login yang tersimpan)
+                    Text(auth.username ?? 'User',
+                        style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: Colors.white)),
-                    Text('Klien', style: TextStyle(color: Colors.white70)),
-                    SizedBox(height: 2),
-                    Text('PT: Belum ditentukan',
+                    const Text('Klien',
+                        style: TextStyle(color: Colors.white70)),
+                    const SizedBox(height: 2),
+                    const Text('PT: Belum ditentukan',
                         style: TextStyle(color: Colors.white54, fontSize: 12)),
                   ],
                 ),
@@ -71,7 +73,8 @@ class _ProfilTabState extends State<ProfilTab> {
                         // TODO: nanti arahkan ke form edit health profile
                       },
                       icon: const Icon(Icons.edit, size: 16, color: Colors.white),
-                      label: const Text('Edit', style: TextStyle(color: Colors.white)),
+                      label: const Text('Edit',
+                          style: TextStyle(color: Colors.white)),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: Colors.white38),
                         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -95,11 +98,20 @@ class _ProfilTabState extends State<ProfilTab> {
                     onTap: () {},
                   ),
                   const Divider(color: Colors.white24, height: 1),
+                  // Disimpan di shared_preferences -> tetap ada setelah app ditutup
                   _switchRow(
                     icon: Icons.notifications_outlined,
                     label: 'Notifikasi',
-                    value: _notifOn,
-                    onChanged: (val) => setState(() => _notifOn = val),
+                    value: settings.notificationsEnabled,
+                    onChanged: (val) => settings.setNotificationsEnabled(val),
+                  ),
+                  const Divider(color: Colors.white24, height: 1),
+                  // Khusus demo: membuktikan app tetap jalan dari database lokal
+                  _switchRow(
+                    icon: Icons.wifi_off,
+                    label: 'Simulasi offline (demo)',
+                    value: settings.simulateOffline,
+                    onChanged: (val) => settings.setSimulateOffline(val),
                   ),
                 ],
               ),
@@ -122,13 +134,22 @@ class _ProfilTabState extends State<ProfilTab> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () {
-                  // Logout -> balik ke Login, hapus semua history navigasi
-                  Navigator.of(context).popUntil((route) => route.isFirst);
+                onPressed: () async {
+                  // Hapus token dari secure storage, lalu balik ke Login
+                  // dan bersihkan semua history navigasi.
+                  await context.read<AuthProvider>().logout();
+                  if (!context.mounted) return;
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                        builder: (context) => const LoginScreen()),
+                    (route) => false,
+                  );
                 },
-                icon: const Icon(Icons.logout, size: 18, color: Color(0xFFF09595)),
+                icon: const Icon(Icons.logout,
+                    size: 18, color: Color(0xFFF09595)),
                 label: const Text('Logout',
-                    style: TextStyle(color: Color(0xFFF09595), fontWeight: FontWeight.w600)),
+                    style: TextStyle(
+                        color: Color(0xFFF09595), fontWeight: FontWeight.w600)),
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Color(0xFFF09595)),
                   padding: const EdgeInsets.symmetric(vertical: 12),

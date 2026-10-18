@@ -3,13 +3,17 @@ class Workout {
   final String name;
   final String detail;
   final String benefit;
-  bool isDone;
+  final bool isDone;
 
-  Workout({
+  /// Waktu terakhir data diambil dari server (UTC milliseconds).
+  final int lastFetched;
+
+  const Workout({
     required this.id,
     required this.name,
     required this.detail,
     required this.benefit,
     this.isDone = false,
+    this.lastFetched = 0,
   });
 }
