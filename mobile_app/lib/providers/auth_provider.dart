@@ -18,8 +18,9 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   /// Dipanggil sekali saat app dibuka: kalau token masih ada, anggap sudah login.
-  Future<void> restoreSession() async {
+   Future<void> restoreSession() async {
     final token = await _secureStorage.readToken();
+    debugPrint('DEBUG restoreSession: token ada? ${token != null}');
     if (token != null) {
       _isLoggedIn = true;
       _username = await _secureStorage.readUsername();
@@ -43,8 +44,9 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> logout() async {
+   Future<void> logout() async {
     await _secureStorage.clearSession();
+    debugPrint('DEBUG logout: token sudah dihapus');
     _isLoggedIn = false;
     _username = null;
     notifyListeners();
