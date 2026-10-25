@@ -14,6 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _obscurePassword = true; // true = password disembunyikan
   String? _errorMessage;
 
   @override
@@ -104,7 +105,21 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _passwordController,
                       icon: Icons.lock_outline,
                       hint: 'Password...',
-                      obscure: true,
+                      obscure: _obscurePassword,
+                      // Ikon mata: klik untuk menampilkan / menyembunyikan password
+                      suffixIcon: IconButton(
+                        tooltip: _obscurePassword
+                            ? 'Tampilkan password'
+                            : 'Sembunyikan password',
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          color: Colors.white70,
+                        ),
+                        onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword),
+                      ),
                     ),
                     if (_errorMessage != null) ...[
                       const SizedBox(height: 12),
@@ -162,6 +177,7 @@ class _LoginScreenState extends State<LoginScreen> {
     required IconData icon,
     required String hint,
     bool obscure = false,
+    Widget? suffixIcon,
   }) {
     return TextField(
       controller: controller,
@@ -169,6 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: Colors.white70),
+        suffixIcon: suffixIcon,
         hintText: hint,
         hintStyle: const TextStyle(color: Colors.white60),
         enabledBorder: OutlineInputBorder(
