@@ -10,6 +10,7 @@ const checklistRoutes = require('./routes/checklistRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const ptRoutes = require('./routes/ptRoutes');
 const masterDataRoutes = require('./routes/masterDataRoutes');
+const internalRoutes = require('./routes/internalRoutes');
 
 const app = express();
 
@@ -22,6 +23,8 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+// Internal dipasang lebih awal supaya tidak tertangkap middleware JWT router /api lain.
+app.use('/api/internal', internalRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api', checklistRoutes); // /api/workout-plan-items/:id, /api/meal-plan-items/:id
 app.use('/api', notificationRoutes); // /api/users/me/notifications, /api/notifications/:id/read
