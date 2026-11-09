@@ -31,6 +31,31 @@ register() { curl -s -X POST $BASE/auth/register -H "Content-Type: application/j
 login() { curl -s -X POST $BASE/auth/login -H "Content-Type: application/json" \
   -d "{\"username\":\"$1\",\"password\":\"password123\"}" | json "d['token']"; }
 
+# --- Pemeriksaan: database harus BARU ---
+# Skrip ini memasukkan data uji dengan ID tetap (PT = user 1, klien = client 1, dst.). Penghitung ID
+# (AUTO_INCREMENT) tidak mundur walau datanya dihapus, jadi database yang pernah dipakai membuat ID
+# tidak cocok dan puluhan tes gagal dengan pesan yang membingungkan. Lebih baik berhenti di sini.
+if ! mysql -u root -e "USE healthmaxxing" 2>/dev/null; then
+  echo "Tidak bisa terhubung ke database 'healthmaxxing' (MySQL menyala? schema sudah dimuat?)."
+  exit 2
+fi
+next_id() {
+  mysql -u root -N -e "SET SESSION information_schema_stats_expiry=0; SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA='healthmaxxing' AND TABLE_NAME='$1'" 2>/dev/null \
+    || mysql -u root -N -e "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA='healthmaxxing' AND TABLE_NAME='$1'" 2>/dev/null
+}
+for tbl in users client_profiles exercise_reference food_reference workout_plans workout_plan_items meal_plans meal_plan_items notifications ai_analysis_results; do
+  n=$(next_id $tbl)
+  if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -gt 1 ]; then
+    echo "DATABASE BELUM BERSIH: tabel '$tbl' sudah pernah dipakai (ID berikutnya = $n)."
+    echo "Skrip ini butuh database yang benar-benar baru. Langkah:"
+    echo "  1. Hentikan server (Ctrl+C di terminal npm run dev)"
+    echo "  2. mysql -u root -e \"DROP DATABASE IF EXISTS healthmaxxing;\""
+    echo "  3. mysql -u root < healthmaxxing_schema.sql     (JANGAN muat healthmaxxing_seed.sql)"
+    echo "  4. Nyalakan server lagi (npm run dev), lalu jalankan ulang: bash test_all.sh"
+    exit 2
+  fi
+done
+
 echo "== Setup: bikin 2 PT + 2 klien =="
 register "PT Budi" budi@t.com ptbudi pt
 register "PT Rina" rina@t.com ptrina pt
@@ -182,6 +207,80 @@ let out; const res={status(c){out={code:c};return this},json(b){out.body=b}};
 const log=console.error; console.error=()=>{}; h(e,{},res,()=>{}); console.error=log;
 console.log(out.code+'|'+out.body.message)")
 check "Error 500 tidak membocorkan detail SQL ke klien" "500|Terjadi kesalahan pada server." "$LEAK"
+
+echo; echo "== 11. AI: endpoint internal (AI tiruan / mock) =="
+envval() { grep -E "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2-; }
+IKEY=$(envval INTERNAL_API_KEY); PROV=$(envval AI_PROVIDER); PROV=${PROV:-mock}
+if [ ${#IKEY} -lt 16 ] || [ "$PROV" != "mock" ]; then
+  echo "  [SKIP] bagian ini butuh di .env: INTERNAL_API_KEY (min 16 karakter) dan AI_PROVIDER=mock."
+  echo "         Saat ini AI_PROVIDER='$PROV', panjang INTERNAL_API_KEY=${#IKEY}. Ubah, restart server, jalankan ulang."
+else
+  ireq() { # ireq KEY BODY [JWT]
+    local args=(-s -w "|%{http_code}" -X POST "$BASE/internal/ai/generate-weekly-plan" -H "Content-Type: application/json")
+    [ -n "$1" ] && args+=(-H "x-internal-key: $1")
+    [ -n "$3" ] && args+=(-H "Authorization: Bearer $3")
+    curl "${args[@]}" -d "$2"
+  }
+  FAR=$(python3 -c "import datetime as d; t=d.date.today(); n=t+d.timedelta(days=7-t.weekday()); print(n+d.timedelta(weeks=10))")
+
+  R=$(ireq "" '{"client_id":1}');                          check "Tanpa kunci internal -> 401" 401 $(status "$R")
+  R=$(ireq "kunci-salah-sekali-pokoknya" '{"client_id":1}'); check "Kunci salah -> 401" 401 $(status "$R")
+  R=$(ireq "" '{"client_id":1}' $PT1);                     check "JWT PT saja tidak cukup (butuh kunci internal) -> 401" 401 $(status "$R")
+  R=$(ireq "" '{"client_id":1}' $KA);                      check "JWT klien tidak bisa memicu AI -> 401" 401 $(status "$R")
+  R=$(ireq "$IKEY" '{}');                                  check "client_id kosong -> 400" 400 $(status "$R")
+  R=$(ireq "$IKEY" '{"client_id":"1"}');                   check "client_id bukan angka -> 400" 400 $(status "$R")
+  R=$(ireq "$IKEY" '{"client_id":1,"week_start_date":"2030-01-08"}'); check "week_start_date bukan Senin -> 400" 400 $(status "$R")
+  R=$(ireq "$IKEY" '{"client_id":1,"week_start_date":"2020-01-06"}'); check "week_start_date di masa lalu -> 400" 400 $(status "$R")
+  R=$(ireq "$IKEY" "{\"client_id\":1,\"week_start_date\":\"$FAR\"}"); check "week_start_date terlalu jauh -> 400" 400 $(status "$R")
+  R=$(ireq "$IKEY" '{"client_id":999999}');                check "Klien tidak ada -> 404" 404 $(status "$R")
+
+  R=$(ireq "$IKEY" '{"client_id":1}')
+  check "Generate rencana untuk Ani -> 201" 201 $(status "$R")
+  W=$(body "$R" | json "d['week_start_date']"); AID=$(body "$R" | json "d['analysis_id']")
+  check "  status pending" pending "$(body "$R" | json "d['status']")"
+  check "  provider mock" mock "$(body "$R" | json "d['provider']")"
+  check "  minggu default = Senin berikutnya (setelah hari ini)" 1 "$(python3 -c "import datetime as d; x=d.date.fromisoformat('$W'); print(1 if x.weekday()==0 and x>d.date.today() else 0)")"
+  check "  DB: 1 baris analisis, status pending" "1|pending" "$($DB "SELECT CONCAT(COUNT(*),'|',MIN(status)) FROM ai_analysis_results WHERE client_id=1 AND week_start_date='$W'")"
+  check "  DB: ai_output.meta.provider = mock" mock "$($DB "SELECT JSON_UNQUOTE(JSON_EXTRACT(ai_output,'\$.meta.provider')) FROM ai_analysis_results WHERE analysis_id=$AID")"
+  CAL=$($DB "SELECT JSON_UNQUOTE(JSON_EXTRACT(ai_output,'\$.targets.calories')) FROM ai_analysis_results WHERE analysis_id=$AID")
+  check "  DB: target kalori >= batas aman 1200 (dapat $CAL)" 1 "$([ "$CAL" -ge 1200 ] && echo 1 || echo 0)"
+  check "  DB: workout dan meals terisi" 1 "$($DB "SELECT (JSON_LENGTH(ai_output,'\$.workout')>0 AND JSON_LENGTH(ai_output,'\$.meals')>=21) FROM ai_analysis_results WHERE analysis_id=$AID")"
+  check "  DB: audit log 'ai.generate_plan' tercatat" 1 "$($DB "SELECT COUNT(*) FROM audit_logs WHERE action='ai.generate_plan'")"
+  check "  DB: PT Budi dapat notifikasi review" 1 "$($DB "SELECT COUNT(*) FROM notifications WHERE user_id=1 AND title='Rencana AI menunggu review'")"
+
+  R=$(ireq "$IKEY" '{"client_id":1}')
+  check "Generate ulang saat masih pending -> 200 (diperbarui)" 200 $(status "$R")
+  check "  DB: tetap 1 baris (tidak menggandakan)" 1 "$($DB "SELECT COUNT(*) FROM ai_analysis_results WHERE client_id=1 AND week_start_date='$W'")"
+  check "  DB: notifikasi tidak menggandakan" 1 "$($DB "SELECT COUNT(*) FROM notifications WHERE user_id=1 AND title='Rencana AI menunggu review'")"
+
+  R=$(req GET /pt/clients/1/ai-analysis/current $PT1)
+  check "PT melihat rencana AI terbaru di dashboard" 200 $(status "$R")
+  check "  statusnya pending" pending "$(body "$R" | json "d['status']")"
+  R=$(req PATCH /pt/ai-analysis/$AID/approve $PT1);        check "PT approve rencana" 200 $(status "$R")
+  check "  DB: final_output terisi" 1 "$($DB "SELECT final_output IS NOT NULL FROM ai_analysis_results WHERE analysis_id=$AID")"
+  R=$(ireq "$IKEY" '{"client_id":1}');                     check "Generate lagi setelah di-approve -> 409 (tidak menimpa keputusan PT)" 409 $(status "$R")
+fi
+
+echo; echo "== 12. Format data untuk Mobile & profil minimal =="
+R=$(req GET /clients/me/profile $KA)
+check "birth_date berupa tanggal polos (tidak bergeser zona waktu)" "2000-05-10" "$(body "$R" | json "d['birth_date']")"
+check "height_cm dan weight_current berupa angka, bukan teks" "int-or-float" "$(body "$R" | json "'int-or-float' if all(isinstance(d[k],(int,float)) for k in ('height_cm','weight_current','weight_target')) else 'teks'")"
+R=$(req GET /clients/me/workout-plans/current $KA)
+check "week_start_date workout plan berupa tanggal polos" "2026-10-12" "$(body "$R" | json "d['week_start_date']")"
+check "is_completed berupa boolean (true/false), bukan 1/0" bool "$(body "$R" | json "type(d['items'][0]['is_completed']).__name__")"
+R=$(req GET /clients/me/daily-logs/today $KA)
+check "water_liters berupa angka" "int-or-float" "$(body "$R" | json "'int-or-float' if isinstance(d['water_liters'],(int,float)) else 'teks'")"
+R=$(req GET /users/me/notifications $KA)
+check "is_read notifikasi berupa boolean" bool "$(body "$R" | json "type(d[0]['is_read']).__name__")"
+
+register "Klien Fira" fira@t.com klien_fira klien
+KF=$(login klien_fira)
+R=$(req GET /clients/me/profile $KF);   check "Profil belum diisi -> 404 (sinyal untuk menampilkan form profil)" 404 $(status "$R")
+R=$(req POST /clients/me/profile $KF '{"weight_current":60,"weight_target":55,"allergies":"kacang"}')
+check "Profil MINIMAL (hanya berat, target, alergi) -> 201" 201 $(status "$R")
+R=$(req GET /clients/me/profile $KF)
+check "  field yang tidak diisi bernilai null (gender, birth_date, height_cm, activity_level)" "None|None|None|None" "$(body "$R" | json "'|'.join(str(d[k]) for k in ('gender','birth_date','height_cm','activity_level'))")"
+R=$(req GET /clients/me/workout-plans/current $KF); check "Belum ada plan -> 404 (bukan array kosong)" 404 $(status "$R")
 
 echo; echo "============================================"
 echo " HASIL: $PASS lulus, $FAIL gagal"

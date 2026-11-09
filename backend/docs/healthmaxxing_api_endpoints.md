@@ -1,5 +1,7 @@
 # HealthMaxxing — REST API Endpoint List
 
+> Contoh respons asli, format data, alur klien baru, dan cara menjalankan backend dari emulator: lihat [`panduan_integrasi_mobile.md`](panduan_integrasi_mobile.md).
+
 Dokumen ini jadi kontrak antara Backend, Mobile (Flutter), dan Web Dashboard (PT).
 Base URL: `https://api.healthmaxxing.app` (sesuaikan pas deploy)
 Semua response dalam format JSON. Endpoint yang butuh login harus kirim header:
@@ -22,7 +24,7 @@ Semua response dalam format JSON. Endpoint yang butuh login harus kirim header:
 | Method | Path | Deskripsi | Body Request | Tabel |
 |---|---|---|---|---|
 | GET | `/api/clients/me/profile` | Ambil data profil kesehatan sendiri | — | `client_profiles` |
-| POST | `/api/clients/me/profile` | Isi profil pertama kali (saat data kosong) | `{ birth_date, gender, height_cm, weight_current, weight_target, allergies, activity_level }` | `client_profiles` |
+| POST | `/api/clients/me/profile` | Isi profil pertama kali (saat data kosong). **Wajib hanya `weight_current` dan `weight_target`; field lain opsional** | `{ weight_current*, weight_target*, allergies, birth_date, gender, height_cm, activity_level }` (`*` = wajib) | `client_profiles` |
 | PATCH | `/api/clients/me/profile` | Update sebagian data profil | `{ weight_current, allergies, ... }` | `client_profiles` |
 
 ---
@@ -42,7 +44,7 @@ Semua response dalam format JSON. Endpoint yang butuh login harus kirim header:
 
 | Method | Path | Deskripsi | Body Request | Tabel |
 |---|---|---|---|---|
-| GET | `/api/clients/me/workout-plans/current` | Ambil workout plan minggu ini + daftar latihan | — | `workout_plans`, `workout_plan_items`, `exercise_reference` |
+| GET | `/api/clients/me/workout-plans/current` | Ambil workout plan dengan `week_start_date` terbaru + daftar latihan. 404 bila belum ada | — | `workout_plans`, `workout_plan_items`, `exercise_reference` |
 | PATCH | `/api/workout-plan-items/:itemId` | Update checklist "latihan selesai" | `{ is_completed: true }` | `workout_plan_items` |
 
 ---
@@ -94,13 +96,52 @@ Semua response dalam format JSON. Endpoint yang butuh login harus kirim header:
 
 ---
 
-## 10. Internal — Trigger AI (backend-only, TIDAK dipanggil langsung dari Mobile/Web)
+## 10. Internal — Trigger AI (backend-only, TIDAK dipanggil dari Mobile/Web)
 
 | Method | Path | Deskripsi | Body Request | Tabel |
 |---|---|---|---|---|
-| POST | `/api/internal/ai/generate-weekly-plan` | Backend manggil Gemini API, generate plan baru dari histori klien | `{ client_id }` (dipanggil scheduler/cron, bukan user) | `ai_analysis_results`, `workout_plans`, `meal_plans`, `targets` |
+| POST | `/api/internal/ai/generate-weekly-plan` | Menyusun rencana mingguan lewat AI, memvalidasinya, lalu menyimpannya sebagai `pending` untuk direview PT | `{ client_id, week_start_date? }` | `ai_analysis_results`, `audit_logs`, `notifications` |
 
-> Catatan penting (sesuai requirement keamanan): endpoint kategori 10 ini yang manggil Gemini API. Mobile dan Web **tidak pernah** manggil AI provider secara langsung — semua lewat backend, supaya API key aman dan bisa divalidasi/sanitasi dulu sebelum dan sesudah AI diproses.
+**Autentikasi:** header `X-Internal-Key: <INTERNAL_API_KEY dari .env>`, **bukan** JWT pengguna. Kalau `INTERNAL_API_KEY` kosong atau kurang dari 16 karakter, endpoint ini mati (503), bukan terbuka.
+
+**Body:** `client_id` (bilangan bulat, wajib). `week_start_date` (`YYYY-MM-DD`, opsional) harus hari **Senin**, tidak lebih awal dari minggu ini, dan maksimal 8 minggu ke depan. Default: Senin berikutnya (setelah hari ini).
+
+**Balasan:**
+
+| Status | Arti |
+|---|---|
+| 201 | Rencana baru dibuat, status `pending` |
+| 200 | Sudah ada rencana `pending` untuk minggu itu; diperbarui (tidak menggandakan baris) |
+| 400 | Body tidak valid |
+| 401 | Kunci internal salah atau tidak ada |
+| 404 | Klien tidak ditemukan |
+| 409 | Klien nonaktif, atau analisis minggu itu sudah `approved`/`overridden` (tidak boleh ditimpa) |
+| 422 | Profil klien belum lengkap, atau data master latihan/makanan kosong |
+| 502 | AI gagal merespons, atau hasilnya tidak lolos validasi setelah percobaan ulang (`details` berisi alasannya) |
+| 503 | `INTERNAL_API_KEY` belum dikonfigurasi |
+
+**Alur:** data klien (anonim) -> prompt -> panggil AI -> parse JSON -> **validasi ketat** -> bila ditolak, coba lagi dengan daftar kesalahan (maks `AI_MAX_ATTEMPTS`) -> simpan `pending` + catat `audit_logs` + notifikasi untuk PT. Rencana **tidak pernah** sampai ke klien sebelum PT menyetujuinya.
+
+**Format rencana** (disimpan di `ai_analysis_results.ai_output`):
+
+```json
+{
+  "feedback": "Teks ramah untuk klien (20-600 karakter, tanpa tautan/saran medis)",
+  "targets": { "steps": 8000, "water_liters": 2.0, "calories": 1700 },
+  "workout": [ { "day": "mon", "exercise_id": 1, "sets": 3, "reps": 10 } ],
+  "meals":   [ { "day": "mon", "meal_type": "breakfast", "food_id": 1 } ],
+  "meta": { "provider": "mock", "model": "mock-v1", "attempts": 1, "generated_at": "...", "warnings": [], "allergy_keywords": [] }
+}
+```
+
+- `day`: `mon`..`sun`. `meal_type`: `breakfast`, `lunch`, `dinner`, `snack`.
+- `exercise_id` dan `food_id` **harus** ada di tabel master (AI tidak boleh mengarang).
+- Latihan kategori `strength`: `sets` 1-6, `reps` 1-30. Kategori `cardio`/`flexibility`: `sets` = 1 dan **`reps` = durasi dalam menit** (5-90). Mobile perlu menampilkannya sebagai "menit" (endpoint workout sudah mengembalikan `category`).
+- Setiap hari wajib ada `breakfast`, `lunch`, `dinner`; latihan maksimal 6 hari per minggu.
+- `meta.warnings`: masalah kualitas yang tidak menolak rencana (mis. kalori menu menyimpang >40% dari target); PT yang menilai.
+- Sampai approve/override diterapkan ke tabel rencana (belum dibuat), klien belum melihat rencana ini di aplikasi.
+
+> Mobile dan Web **tidak pernah** memanggil penyedia AI langsung. Semua lewat backend, supaya API key aman dan input/output bisa disaring.
 
 ---
 
