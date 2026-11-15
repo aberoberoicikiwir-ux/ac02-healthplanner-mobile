@@ -45,6 +45,7 @@ class ApiService {
   void Function()? onUnauthorized;
 
   static const _timeout = Duration(seconds: 20);
+  static const _aiTimeout = Duration(seconds: 90);
 
   Uri _uri(String path, [Map<String, String>? query]) {
     var base = _settings.apiBaseUrl.trim();
@@ -74,19 +75,21 @@ class ApiService {
     Map<String, dynamic>? body,
     Map<String, String>? query,
     bool auth = true,
+    Duration? timeout,
   }) async {
     if (_settings.simulateOffline) {
       throw ApiException(null, 'Mode simulasi offline aktif.');
     }
 
+    final limit = timeout ?? _timeout;
     final client = http.Client();
     try {
       final request = http.Request(method, _uri(path, query));
       request.headers.addAll(await _headers(auth: auth));
       if (body != null) request.body = jsonEncode(body);
 
-      final streamed = await client.send(request).timeout(_timeout);
-      return await http.Response.fromStream(streamed).timeout(_timeout);
+      final streamed = await client.send(request).timeout(limit);
+      return await http.Response.fromStream(streamed).timeout(limit);
     } on ApiException {
       rethrow;
     } on TimeoutException {
@@ -136,6 +139,7 @@ class ApiService {
     Map<String, dynamic>? body,
     Map<String, String>? query,
     bool auth = true,
+    Duration? timeout,
   }) async {
     final response = await _send(
       method,
@@ -143,6 +147,7 @@ class ApiService {
       body: body,
       query: query,
       auth: auth,
+      timeout: timeout,
     );
     final decoded = _decode(response.body);
     _throwIfError(response, decoded, auth: auth);
@@ -286,4 +291,29 @@ class ApiService {
     if (body.isEmpty) return Future.value();
     return _requestMap('PUT', '/clients/me/daily-logs/today', body: body);
   }
+
+  // ---------------------------------------------------------- notifications
+  Future<List<Map<String, dynamic>>> getNotifications() =>
+      _requestList('GET', '/users/me/notifications');
+
+  Future<void> markNotificationRead(int id) =>
+      _requestMap('PATCH', '/notifications/$id/read');
+
+  // ------------------------------------------------------------ ai coach
+  Future<List<Map<String, dynamic>>> getCoachMessages({int limit = 20}) =>
+      _requestList(
+        'GET',
+        '/clients/me/ai-coach/messages',
+        query: {'limit': '$limit'},
+      );
+
+  Future<Map<String, dynamic>> sendCoachMessage(String message) => _requestMap(
+    'POST',
+    '/clients/me/ai-coach/messages',
+    body: {'message': message},
+    timeout: _aiTimeout,
+  );
+
+  Future<void> clearCoachMessages() =>
+      _requestMap('DELETE', '/clients/me/ai-coach/messages');
 }

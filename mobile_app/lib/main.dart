@@ -8,10 +8,14 @@ import 'data/local/settings_service.dart';
 import 'data/remote/api_service.dart';
 import 'data/repositories/daily_repository.dart';
 import 'data/repositories/meal_repository.dart';
+import 'data/repositories/coach_repository.dart';
+import 'data/repositories/insight_repository.dart';
 import 'data/repositories/profile_repository.dart';
 import 'data/repositories/workout_repository.dart';
 import 'providers/auth_provider.dart';
+import 'providers/coach_provider.dart';
 import 'providers/daily_provider.dart';
+import 'providers/insight_provider.dart';
 import 'providers/meal_provider.dart';
 import 'providers/profile_provider.dart';
 import 'providers/settings_provider.dart';
@@ -39,6 +43,8 @@ Future<void> main() async {
   final workoutProvider = WorkoutProvider(WorkoutRepository(database, api));
   final mealProvider = MealProvider(MealRepository(database, api));
   final dailyProvider = DailyProvider(DailyRepository(database, api));
+  final insightProvider = InsightProvider(InsightRepository(database, api));
+  final coachProvider = CoachProvider(CoachRepository(database, api));
 
   // Saat logout / token habis / login akun baru: hapus cache lokal supaya
   // akun berikutnya tidak melihat data akun sebelumnya.
@@ -48,6 +54,8 @@ Future<void> main() async {
     workoutProvider.reset();
     mealProvider.reset();
     dailyProvider.reset();
+    insightProvider.reset();
+    coachProvider.reset();
   }
 
   authProvider.onLoggedOut = clearLocalData;
@@ -64,6 +72,8 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: workoutProvider),
         ChangeNotifierProvider.value(value: mealProvider),
         ChangeNotifierProvider.value(value: dailyProvider),
+        ChangeNotifierProvider.value(value: insightProvider),
+        ChangeNotifierProvider.value(value: coachProvider),
       ],
       child: const HealthPlannerApp(),
     ),

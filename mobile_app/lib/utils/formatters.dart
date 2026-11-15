@@ -65,3 +65,11 @@ String shortDate(String isoDate) {
   if (isoDate.length < 10) return isoDate;
   return '${isoDate.substring(8, 10)}/${isoDate.substring(5, 7)}';
 }
+
+String formatDateTime(String iso) {
+  final parsed = DateTime.tryParse(iso);
+  if (parsed == null) return '';
+  final local = parsed.toLocal();
+  return '${twoDigits(local.day)}/${twoDigits(local.month)} '
+      '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
+}
