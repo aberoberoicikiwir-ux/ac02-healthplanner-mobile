@@ -95,6 +95,31 @@ class ClientProfileEntries extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('NotificationEntry')
+class NotificationEntries extends Table {
+  IntColumn get id => integer()();
+  TextColumn get type => text()();
+  TextColumn get title => text()();
+  TextColumn get message => text()();
+  BoolColumn get isRead => boolean().withDefault(const Constant(false))();
+  TextColumn get createdAt => text()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DataClassName('CoachMessageEntry')
+class CoachMessages extends Table {
+  IntColumn get id => integer()();
+  TextColumn get role => text()();
+  TextColumn get content => text()();
+  TextColumn get category => text().nullable()();
+  TextColumn get createdAt => text()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DriftDatabase(
   tables: [
     WorkoutEntries,
@@ -102,13 +127,15 @@ class ClientProfileEntries extends Table {
     TargetEntries,
     DailyLogEntries,
     ClientProfileEntries,
+    NotificationEntries,
+    CoachMessages,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'healthmaxxing_db'));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   /// MIGRASI: v1 -> v2 -> v3 tanpa menghapus data pengguna.
   @override
@@ -126,6 +153,10 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(targetEntries);
         await m.createTable(dailyLogEntries);
         await m.createTable(clientProfileEntries);
+      }
+      if (from < 4) {
+        await m.createTable(notificationEntries);
+        await m.createTable(coachMessages);
       }
     },
   );
@@ -446,6 +477,53 @@ class AppDatabase extends _$AppDatabase {
     return row?.payload;
   }
 
+  // ======================================================== notifikasi & chat
+  Stream<List<NotificationEntry>> watchNotifications() {
+    return (select(
+      notificationEntries,
+    )..orderBy([(t) => OrderingTerm.desc(t.id)])).watch();
+  }
+
+  Future<void> upsertNotifications(List<NotificationEntriesCompanion> rows) {
+    return transaction(() async {
+      for (final row in rows) {
+        await into(notificationEntries).insertOnConflictUpdate(row);
+      }
+    });
+  }
+
+  Future<void> deleteStaleNotifications(Set<int> keepIds) async {
+    if (keepIds.isEmpty) {
+      await delete(notificationEntries).go();
+      return;
+    }
+    await (delete(
+      notificationEntries,
+    )..where((t) => t.id.isNotIn(keepIds))).go();
+  }
+
+  Future<void> markNotificationReadLocal(int id) {
+    return (update(notificationEntries)..where((t) => t.id.equals(id))).write(
+      const NotificationEntriesCompanion(isRead: Value(true)),
+    );
+  }
+
+  Stream<List<CoachMessageEntry>> watchCoachMessages() {
+    return (select(
+      coachMessages,
+    )..orderBy([(t) => OrderingTerm.asc(t.id)])).watch();
+  }
+
+  Future<void> upsertCoachMessages(List<CoachMessagesCompanion> rows) {
+    return transaction(() async {
+      for (final row in rows) {
+        await into(coachMessages).insertOnConflictUpdate(row);
+      }
+    });
+  }
+
+  Future<void> clearCoachMessages() => delete(coachMessages).go();
+
   /// Bersihkan semua data pengguna saat logout agar akun berikutnya tidak
   /// melihat cache akun sebelumnya.
   Future<void> clearUserData() async {
@@ -455,6 +533,8 @@ class AppDatabase extends _$AppDatabase {
       await delete(targetEntries).go();
       await delete(dailyLogEntries).go();
       await delete(clientProfileEntries).go();
+      await delete(notificationEntries).go();
+      await delete(coachMessages).go();
     });
   }
 }

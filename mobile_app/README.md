@@ -51,6 +51,8 @@ Build debug mengizinkan HTTP polos (`usesCleartextTraffic`) dan sudah meminta iz
 - Workout Plan: rencana dari PT (hari + kategori), tandai selesai (tersinkron ke server), tambah latihan lokal, hapus latihan lokal, tarik-ke-bawah untuk refresh
 - Meal Plan: menu per hari, tandai makanan sudah dimakan (tersinkron ke server)
 - Progres: grafik berat badan dan langkah harian
+- Insight AI: feedback mingguan dari rencana yang disetujui PT + daftar pengingat
+- Tanya Coach: chat AI dengan persona PT gym, riwayat per akun, maksimal 20 pertanyaan/hari
 - Offline-first: semua data terakhir tetap tampil saat offline; perubahan lokal dikirim saat sinkron
 - Bottom Navigation 4 tab: Today's Target, Progres, Insight AI, Profil
 
@@ -60,7 +62,7 @@ Data dipisahkan ke penyimpanan yang sesuai dengan jenisnya:
 
 | Jenis data | Penyimpanan | Isi di aplikasi ini | File |
 |---|---|---|---|
-| Data terstruktur | **Drift** (SQLite) | Latihan, menu, target, log harian, cache profil, status sinkron | `lib/data/local/app_database.dart` |
+| Data terstruktur | **Drift** (SQLite) | Latihan, menu, target, log harian, cache profil, notifikasi, riwayat chat, status sinkron | `lib/data/local/app_database.dart` |
 | Pengaturan (kecil, tidak sensitif) | **shared_preferences** | Switch notifikasi, simulasi offline | `lib/data/local/settings_service.dart` |
 | Rahasia | **flutter_secure_storage** | Access token dan username | `lib/data/local/secure_storage_service.dart` |
 
@@ -73,7 +75,7 @@ Token **tidak** disimpan di shared_preferences.
 - **Penanda sinkronisasi**: kolom `synced` (`false` = ada perubahan lokal yang belum dikirim) dan `updatedAt` (UTC milliseconds).
 - **Stream reaktif**: `watchAllWorkouts()` memakai `.watch()`, sehingga UI otomatis diperbarui saat database berubah.
 - **Database transaction**: `upsertServerWorkouts()` dan `markSynced()` membungkus penulisan banyak baris dalam satu `transaction` (atomic).
-- **Migrasi schema**: `schemaVersion` naik dari 1 ke 2 (status sinkron) lalu 3 (hari/kategori latihan + tabel menu, target, log harian, cache profil) tanpa menghapus data pengguna.
+- **Migrasi schema**: `schemaVersion` naik dari 1 ke 2 (status sinkron), 3 (hari/kategori latihan + menu/target/log/profil), lalu 4 (notifikasi + riwayat Tanya Coach) tanpa menghapus data pengguna.
 - **CRUD reaktif**: tambah (tombol +), ubah (Tandai Selesai), hapus (geser ke kiri, hanya latihan buatan sendiri).
 
 ### Alur data
@@ -98,13 +100,13 @@ UI (Consumer) <-- WorkoutProvider <-- .watch() stream <-- Drift (sumber kebenara
 | Schema Drift dengan `synced` dan `updated_at` UTC millis (18) | `workout_entries` |
 | Query reaktif `.watch()` (19) | `watchAllWorkouts()` |
 | Transaksi atomik dan `markSynced` (21-22) | `upsertServerWorkouts()`, `markSynced()` |
-| Migrasi schema (23) | `schemaVersion` 1 ke 2 |
+| Migrasi schema (23) | `schemaVersion` 1 ke 4 |
 | Offline-first (24-26) | Tulis lokal dulu, sinkron lewat tombol Sinkronkan |
 | CRUD reaktif (29) | Tambah, ubah, hapus |
 
 ### Global State (Provider)
 
-`WorkoutProvider` membaca dari stream Drift. Menekan "Tandai Selesai" di halaman detail langsung terlihat di layar Workout Plan (centang) dan Today's Target ("X / Y latihan"). `AuthProvider` menyimpan status login dan `SettingsProvider` menyimpan pengaturan.
+`WorkoutProvider` membaca dari stream Drift. Menekan "Tandai Selesai" di halaman detail langsung terlihat di layar Workout Plan (centang) dan Today's Target ("X / Y latihan"). `AuthProvider` menyimpan status login, `SettingsProvider` menyimpan pengaturan, `InsightProvider` menyimpan feedback/notifikasi, dan `CoachProvider` menyimpan riwayat chat.
 
 ## Struktur Folder
 
@@ -112,7 +114,7 @@ UI (Consumer) <-- WorkoutProvider <-- .watch() stream <-- Drift (sumber kebenara
 lib/
 ├── data/
 │   ├── local/          # Drift, shared_preferences, secure storage
-│   ├── remote/         # Sumber data dari server (saat ini API tiruan)
+│   ├── remote/         # ApiService (REST ke backend Express)
 │   └── repositories/   # Penghubung API dan database
 ├── models/             # Model data
 ├── providers/          # State management (Provider)
@@ -126,12 +128,14 @@ Mobile sekarang memanggil REST API backend melalui `lib/data/remote/api_service.
 (header `Authorization: Bearer <token>`). Mobile dan web tidak pernah mengakses
 database atau penyedia AI secara langsung.
 
-- Endpoint yang dipakai: login, profil, pilih PT, workout plan, meal plan, target, dan log harian.
+- Endpoint yang dipakai: login, profil, pilih PT, workout plan, meal plan, target, log harian, notifikasi, dan Tanya Coach.
 - Token JWT disimpan di `flutter_secure_storage`; 401 otomatis mengembalikan pengguna ke layar login.
 - Cache lokal dibersihkan saat logout / login akun berbeda, supaya data antar-akun tidak tercampur.
 - Tombol "+" (latihan buatan pengguna) tetap lokal karena backend belum punya endpoint-nya.
 - Langkah kaki diisi manual di form Today's Target (integrasi pedometer belum ada).
-- Tab **Insight AI** masih placeholder; nantinya hanya menampilkan hasil analisis dari backend.
+- **Insight AI** menampilkan feedback dari rencana yang disetujui PT dan chat **Tanya Coach**. Gemini tetap dipanggil backend; aplikasi tidak menyimpan API key.
+- Tanya Coach tidak menggantikan dokter/PT: pertanyaan medis diarahkan ke profesional, jawaban divalidasi backend, dan dibatasi 20 pertanyaan/hari. PT tidak bisa membaca isi chat.
+- Saat offline, riwayat chat tetap tampil tetapi tombol kirim dinonaktifkan (jawaban AI harus real-time). Riwayat bisa dihapus dari tab Tanya Coach.
 
 Untuk mendemonstrasikan mode offline, nyalakan **Simulasi offline (demo)** di tab Profil,
 lalu tarik layar Workout Plan / Meal Plan ke bawah. Pesan gagal sinkron muncul, tetapi
