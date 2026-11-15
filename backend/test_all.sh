@@ -212,7 +212,7 @@ check "Error 500 tidak membocorkan detail SQL ke klien" "500|Terjadi kesalahan p
 
 echo; echo "== 11. AI: endpoint internal (AI tiruan / mock) =="
 envval() { grep -E "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2-; }
-IKEY=$(envval INTERNAL_API_KEY); PROV=$(envval AI_PROVIDER); PROV=${PROV:-mock}
+IKEY=$(envval INTERNAL_API_KEY); PROV=${AI_PROVIDER:-$(envval AI_PROVIDER)}; PROV=${PROV:-mock}
 if [ ${#IKEY} -lt 16 ] || [ "$PROV" != "mock" ]; then
   echo "  [SKIP] bagian ini butuh di .env: INTERNAL_API_KEY (min 16 karakter) dan AI_PROVIDER=mock."
   echo "         Saat ini AI_PROVIDER='$PROV', panjang INTERNAL_API_KEY=${#IKEY}. Ubah, restart server, jalankan ulang."
@@ -332,6 +332,30 @@ check "Profil MINIMAL (hanya berat, target, alergi) -> 201" 201 $(status "$R")
 R=$(req GET /clients/me/profile $KF)
 check "  field yang tidak diisi bernilai null (gender, birth_date, height_cm, activity_level)" "None|None|None|None" "$(body "$R" | json "'|'.join(str(d[k]) for k in ('gender','birth_date','height_cm','activity_level'))")"
 R=$(req GET /clients/me/workout-plans/current $KF); check "Belum ada plan -> 404 (bukan array kosong)" 404 $(status "$R")
+
+echo; echo "== 13. Tanya Coach (AI) =="
+R=$(req POST /clients/me/ai-coach/messages $KA '{"message":"Apa manfaat squat?"}')
+check "Ani bertanya ke coach -> 201" 201 $(status "$R")
+check "  balasan assistant terisi" 1 "$(body "$R" | json "1 if d['reply']['role']=='assistant' and len(d['reply']['content'])>=20 else 0")"
+check "  kategori valid" 1 "$(body "$R" | json "1 if d['category'] in ['latihan','nutrisi','motivasi','lain'] else 0")"
+check "  DB: 2 pesan tersimpan (user+assistant)" 2 "$($DB "SELECT COUNT(*) FROM ai_coach_messages WHERE client_id=1")"
+R=$(req GET /clients/me/ai-coach/messages $KA)
+check "Riwayat chat Ani berisi 2 pesan" 2 "$(body "$R" | json "len(d)")"
+check "  pesan pertama role user" user "$(body "$R" | json "d[0]['role']")"
+R=$(req GET /clients/me/ai-coach/messages $KB)
+check "Sari tidak melihat chat Ani" 0 "$(body "$R" | json "len(d)")"
+R=$(req POST /clients/me/ai-coach/messages $KA '{"message":""}')
+check "Pertanyaan kosong -> 400" 400 $(status "$R")
+R=$(req POST /clients/me/ai-coach/messages $KA '{"message":"Saya nyeri dada, obat apa yang cocok?"}')
+check "Pertanyaan medis -> dialihkan ke dokter/PT" 1 "$(body "$R" | json "1 if d['safety_refusal'] is True and ('dokter' in d['reply']['content'].lower() or ' pt' in d['reply']['content'].lower()) else 0")"
+R=$(req POST /clients/me/ai-coach/messages $PT1 '{"message":"Halo coach"}')
+check "PT tidak bisa memakai chat klien -> 403" 403 $(status "$R")
+R=$(req POST /clients/me/ai-coach/messages "" '{"message":"Halo coach"}')
+check "Chat tanpa token -> 401" 401 $(status "$R")
+R=$(req DELETE /clients/me/ai-coach/messages $KA)
+check "Hapus riwayat chat -> 200" 200 $(status "$R")
+check "  DB: riwayat Ani kosong" 0 "$($DB "SELECT COUNT(*) FROM ai_coach_messages WHERE client_id=1")"
+check "  DB: audit log 'ai.coach_question' tercatat" 2 "$($DB "SELECT COUNT(*) FROM audit_logs WHERE action='ai.coach_question'")"
 
 echo; echo "============================================"
 echo " HASIL: $PASS lulus, $FAIL gagal"

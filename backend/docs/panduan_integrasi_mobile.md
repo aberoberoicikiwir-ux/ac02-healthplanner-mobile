@@ -212,7 +212,9 @@ Sinkron pedometer: `PUT /api/clients/me/daily-logs/today` dengan field yang beru
 | 403 | role tidak sesuai, atau (untuk PT) data klien bukan bimbingannya | `"Kamu tidak punya akses ke resource ini."`, `"Klien/analisis ini bukan bimbinganmu."` |
 | 404 | data tidak ada, atau bukan milik pengguna | `"Belum ada workout plan."` |
 | 409 | bentrok (profil sudah ada, username dipakai) | `"Profil sudah pernah diisi. Gunakan PATCH untuk update."` |
+| 429 | batas pertanyaan Tanya Coach tercapai | `"Batas 20 pertanyaan per hari sudah tercapai. Coba lagi besok ya."` |
 | 500 | error server | `"Terjadi kesalahan pada server."` |
+| 502 | layanan AI gagal / jawaban tidak lolos validasi | `"Coach sedang tidak bisa menjawab. Coba lagi nanti."` |
 
 `message` pada kasus normal berupa teks Bahasa Indonesia yang aman ditampilkan. Pengecualian: body JSON yang rusak menghasilkan 400 dengan pesan teknis berbahasa Inggris (mis. `Expected property name or '}' in JSON...`). Itu hanya terjadi bila aplikasi mengirim JSON tidak valid (bug aplikasi), jadi jangan tampilkan `message` mentah ke pengguna untuk 400 yang tidak terduga; pakai pesan umum buatan aplikasi.
 
@@ -227,3 +229,19 @@ Alur sampai rencana muncul di aplikasi klien:
 Sebelum langkah 3, klien menerima 404 di `workout-plans/current` dan `meal-plans/current`. **Tangani sebagai keadaan kosong** ("Rencana mingguanmu sedang disiapkan"). Akun `klien_demo` sudah punya plan minggu ini, dan satu rencana AI `pending` untuk minggu depan yang bisa dicoba disetujui lewat `pt_demo`.
 
 Fitur tombol "+" (klien menambah latihan sendiri) **belum punya endpoint**; sementara simpan secara lokal di aplikasi.
+
+## 8. Tanya Coach AI
+
+Fitur ini dipanggil dari dalam aplikasi klien, tetapi **Gemini tetap dipanggil backend**. Mobile hanya mengirim pertanyaan dan menerima jawaban.
+
+- `POST /api/clients/me/ai-coach/messages` body `{ "message": "Apa manfaat squat?" }`
+- `GET /api/clients/me/ai-coach/messages?limit=20` untuk riwayat (lama ke baru).
+- `DELETE /api/clients/me/ai-coach/messages` untuk menghapus riwayat.
+
+Batasan:
+- Pertanyaan 3-500 karakter, maksimal **20 pertanyaan per 24 jam** per klien (429 jika lewat).
+- Pertanyaan medis (obat, diagnosis, kehamilan, cedera, nyeri dada, dll.) tidak dikirim ke AI; respons berisi arahan ke dokter/PT dan `safety_refusal: true`.
+- Jawaban AI divalidasi backend: tanpa tautan, tanpa saran medis berisiko, panjang 20-600 karakter.
+- Data yang dikirim ke AI sudah dianonimkan (tanpa nama/email/username/ID).
+- PT tidak bisa membaca isi chat klien.
+- Provider mengikuti `AI_PROVIDER` di `.env`: `mock` (pengembangan/tes) atau `gemini` (AI asli). API key hanya di backend.

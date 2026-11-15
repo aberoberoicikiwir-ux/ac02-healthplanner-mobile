@@ -28,4 +28,13 @@ const LIMITS = {
   calorieDeviationWarn: 0.4, // peringatan jika kalori harian menyimpang >40% dari target
 };
 
-module.exports = { DAYS, MEAL_TYPES, REQUIRED_MEALS, TIMED_CATEGORIES, LIMITS };
+// Batas fitur "Tanya Coach" (chat AI). Dipakai prompt, validator, dan service.
+const COACH = {
+  questionMaxLen: 500,
+  answerLen: [20, 600],
+  dailyLimit: 20,
+  historyLimit: 20,
+  maxHistoryKeep: 100,
+};
+
+module.exports = { DAYS, MEAL_TYPES, REQUIRED_MEALS, TIMED_CATEGORIES, LIMITS, COACH };

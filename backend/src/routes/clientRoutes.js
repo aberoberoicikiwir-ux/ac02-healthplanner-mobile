@@ -4,6 +4,7 @@ const { verifyToken, requireRole } = require('../middlewares/auth');
 const clientController = require('../controllers/clientController');
 const workoutController = require('../controllers/workoutController');
 const mealController = require('../controllers/mealController');
+const coachController = require('../controllers/coachController');
 
 // Semua route di sini cuma boleh diakses oleh user login dengan role 'klien'
 router.use(verifyToken, requireRole('klien'));
@@ -21,5 +22,9 @@ router.get('/me/daily-logs', clientController.getLogsRange);
 
 router.get('/me/workout-plans/current', workoutController.getCurrentWorkoutPlan);
 router.get('/me/meal-plans/current', mealController.getCurrentMealPlan);
+
+router.get('/me/ai-coach/messages', coachController.getMyCoachMessages);
+router.post('/me/ai-coach/messages', coachController.postMyCoachMessage);
+router.delete('/me/ai-coach/messages', coachController.deleteMyCoachMessages);
 
 module.exports = router;

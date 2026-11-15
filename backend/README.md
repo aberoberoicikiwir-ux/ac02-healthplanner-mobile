@@ -9,14 +9,15 @@ Backend ini melayani aplikasi Mobile (Klien) dan Dashboard Web (Personal Trainer
 
 | Bagian | Status |
 |---|---|
-| Database MySQL (13 tabel, FK, unique, index) + data master awal (seed) | Selesai, teruji |
+| Database MySQL (14 tabel, FK, unique, index) + data master awal (seed) | Selesai, teruji |
 | Autentikasi JWT + hashing password (bcrypt) | Selesai, teruji |
-| 25 endpoint REST (klien, PT, master data, notifikasi) | Selesai, teruji |
+| 28 endpoint REST (klien, PT, master data, notifikasi, Tanya Coach) | Selesai, teruji |
 | Validasi input & perlindungan otorisasi | Selesai, teruji |
 | Pembuatan rencana mingguan oleh AI (prompt, validasi, retry, simpan `pending`, audit log, notifikasi PT) | Selesai, teruji dengan **AI tiruan (mock)** |
-| Penyedia **Gemini** | Kode ditulis, **belum diuji ke Gemini sungguhan** (butuh API key); formatnya hanya diuji dengan `fetch` palsu |
+| Penyedia **Gemini** | Koneksi dasar diuji dengan `gemini-3.1-flash-lite`; kualitas rencana penuh dan seberapa sering validator menolak belum diukur |
 | Penerapan hasil approve/override PT ke workout & meal plan yang dilihat klien (+ `POST /api/pt/clients/:clientId/generate-plan`, kolom `meal_plan_items.day_of_week`) | Selesai. Logika diuji tanpa database (`npm run test:plan`, 13 tes); SQL-nya diuji oleh `test_all.sh` bagian 11b dan 11c, **yang perlu dijalankan terhadap MySQL sungguhan** |
-| Rate limiting, deployment | **Belum** |
+| **Tanya Coach AI** (chat terbatas, persona PT gym, validasi, rate limit 20/hari, arahan medis, riwayat per klien) | Selesai. 15 tes tanpa database (`npm run test:coach`) + bagian 13 `test_all.sh`; PT tidak bisa membaca chat |
+| Rate limiting umum, deployment | **Belum** (fitur Tanya Coach punya batas 20 pertanyaan/hari) |
 
 ## Teknologi
 
@@ -76,12 +77,18 @@ bash test_all.sh     # terminal 2
 
 Hasil yang diharapkan: `HASIL: N lulus, 0 gagal` (yang menentukan adalah **0 gagal**; N lebih banyak dari 117 karena bagian 11b dan 11c ditambahkan, dan 6 tes lama di bagian 6, 11, dan 12 disesuaikan dengan perilaku approve yang baru). Setiap kali dijalankan, database harus di-reset lagi. Kalau database sudah pernah dipakai, skrip berhenti dengan pesan `DATABASE BELUM BERSIH` beserta langkah perbaikannya. Prasyarat: `curl`, `python3`, klien `mysql` (skrip memakai `mysql -u root` tanpa password; ubah variabel `DB` di bagian atas kalau perlu).
 
-Bagian 11 (AI) hanya berjalan bila `.env` berisi `AI_PROVIDER=mock` dan `INTERNAL_API_KEY` minimal 16 karakter; kalau tidak, bagian itu **dilewati** dengan pesan `[SKIP]` yang menjelaskan sebabnya.
+Bagian 11 (AI) hanya berjalan bila `.env` berisi `AI_PROVIDER=mock` dan `INTERNAL_API_KEY` minimal 16 karakter; kalau tidak, bagian itu **dilewati** dengan pesan `[SKIP]` yang menjelaskan sebabnya. Bagian 13 (Tanya Coach) sebaiknya juga dijalankan dengan `AI_PROVIDER=mock` agar cepat, murah, dan deterministik.
 
-**2. Tes modul AI (51 tes)** — butuh MySQL menyala dan user MySQL yang boleh membuat database (root pada setup lokal). Server dan schema di database utama tidak diperlukan.
+**2. Tes modul AI (51 tes)** - butuh MySQL menyala dan user MySQL yang boleh membuat database (root pada setup lokal). Server dan schema di database utama tidak diperlukan.
 
 ```bash
 npm run test:ai
+```
+
+**3. Tes Tanya Coach (15 tes, tanpa database)** - menguji validator, prompt, deteksi pertanyaan medis, rate limit, dan alur service dengan koneksi palsu.
+
+```bash
+npm run test:coach
 ```
 
 Bagian yang butuh database memakai database terpisah `healthmaxxing_test` (diubah lewat `TEST_DB_NAME`, nama wajib berakhiran `_test`) yang dibuat dari schema lalu dihapus otomatis. Database utama dan penghitung ID-nya tidak tersentuh, jadi `test_all.sh` tetap bisa dijalankan setelahnya.
@@ -176,17 +183,23 @@ Lengkapnya (method, path, body, tabel, aturan validasi, format rencana AI) ada d
 - Pesan error 5xx ke klien bersifat umum; detail hanya di log server.
 - Query memakai parameter terikat (anti SQL injection).
 - Rahasia hanya di `.env`.
+- **Tanya Coach:** pertanyaan medis berisiko tidak dikirim ke AI, output divalidasi (tanpa tautan/obat/diagnosis), konteks dianonimkan, PT tidak bisa membaca chat, dan audit log tidak menyimpan isi pesan.
+
+File baru fitur Tanya Coach: `services/ai/coach.js`, `coachPrompt.js`, `validateCoach.js`, `controllers/coachController.js`, `tests/coach.test.js`, dan `migrations/002_ai_coach_messages.sql`.
 
 ## Batasan yang diketahui
 
-- **Gemini belum diuji sungguhan.** Efektivitas pengaman terhadap model nyata (mis. seberapa sering hasilnya ditolak validator) belum diukur.
+- **Gemini:** koneksi dasar dan satu jawaban Tanya Coach sudah diuji dengan `gemini-3.1-flash-lite`; kualitas rencana mingguan penuh dan seberapa sering validator menolak belum diukur.
 - **Pembuatan rencana belum otomatis/terjadwal.** PT memicunya lewat `POST /api/pt/clients/:clientId/generate-plan` (atau endpoint internal). Belum ada pemicu otomatis setelah klien mengisi profil.
 - **Rencana yang sudah ada untuk minggu yang sama tidak ditimpa** (409), karena progres checklist klien bisa hilang. Mengganti rencana yang sudah diterapkan butuh keputusan tim.
-- **Database lama perlu migrasi** `migrations/001_meal_items_day_of_week.sql` (sekali). Baris menu lama bernilai `day_of_week = NULL`.
+- **Database lama perlu migrasi** `migrations/001_meal_items_day_of_week.sql` dan `migrations/002_ai_coach_messages.sql` (sekali). Database baru dari schema terbaru sudah memilikinya.
+- **Tanya Coach bukan pengganti dokter/PT.** Pertanyaan medis dialihkan; jawaban tetap divalidasi, tetapi tidak ditinjau manusia per pesan.
+- **Tanya Coach belum memakai riwayat percakapan sebelumnya** sebagai konteks; setiap pertanyaan berdiri sendiri (konteks tetap dari profil, log, dan rencana aktif).
+- Riwayat chat disimpan sampai klien menghapusnya; PT tidak punya akses.
 - Daftar alergen dicocokkan dengan **nama makanan**; makanan yang mengandung alergen tapi namanya tidak menyebutnya akan lolos (itu sebabnya nama di seed menyebut alergen utama). Nilai gizi di seed adalah perkiraan; verifikasi dengan TKPI.
 - Master data yang dikirim ke AI dibatasi 200 baris per tabel.
 - "Hari ini" dan "Senin berikutnya" dihitung dengan zona waktu server; perlu disesuaikan saat deployment agar sesuai WIB.
 - Role `pt` bisa dipilih siapa saja saat register; produksi butuh mekanisme undangan.
 - `JWT_SECRET` di `.env.example` adalah placeholder publik; **wajib diganti** sebelum deployment.
 - Log server masih mencatat isi query saat error; rapikan sebelum deployment.
-- Belum ada rate limiting; pemicu terjadwal (cron) untuk endpoint AI belum dibuat.
+- Rate limiting umum belum ada; fitur Tanya Coach sudah dibatasi 20 pertanyaan/hari dan 500 karakter. Pemicu terjadwal (cron) untuk endpoint AI belum dibuat.
