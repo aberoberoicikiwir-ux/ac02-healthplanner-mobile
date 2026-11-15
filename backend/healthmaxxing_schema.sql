@@ -130,6 +130,7 @@ CREATE TABLE meal_plan_items (
     plan_id       INT NOT NULL,
     food_id       INT NOT NULL,
     meal_type     ENUM('breakfast', 'lunch', 'dinner', 'snack') NOT NULL,
+    day_of_week   ENUM('mon','tue','wed','thu','fri','sat','sun') NULL,
     is_completed  BOOLEAN NOT NULL DEFAULT FALSE,
 
     KEY idx_meal_items_plan (plan_id),

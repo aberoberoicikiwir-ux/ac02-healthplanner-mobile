@@ -7,7 +7,9 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test:ai": "node --test tests/ai.test.js",
-    "seed:demo": "node scripts/seed-demo.js"
+    "test:plan": "node --test tests/plan.test.js",
+    "seed:demo": "node scripts/seed-demo.js",
+    "demo:approve": "node scripts/demo-approve.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
