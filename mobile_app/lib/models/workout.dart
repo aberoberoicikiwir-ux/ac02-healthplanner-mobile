@@ -3,6 +3,8 @@ class Workout {
   final String name;
   final String detail;
   final String benefit;
+  final String? dayOfWeek;
+  final String? category;
   final bool isDone;
 
   /// Waktu terakhir data diambil dari server (UTC milliseconds).
@@ -19,6 +21,8 @@ class Workout {
     required this.name,
     required this.detail,
     required this.benefit,
+    this.dayOfWeek,
+    this.category,
     this.isDone = false,
     this.lastFetched = 0,
     this.updatedAt = 0,

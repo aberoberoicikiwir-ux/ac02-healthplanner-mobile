@@ -1,17 +1,164 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/auth_provider.dart';
+import '../providers/profile_provider.dart';
 import '../providers/settings_provider.dart';
-import 'login_screen.dart';
+import 'health_profile_screen.dart';
 
 class ProfilTab extends StatelessWidget {
   const ProfilTab({super.key});
 
+  Future<void> _editProfile(BuildContext context) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const HealthProfileFormScreen(isEdit: true),
+      ),
+    );
+  }
+
+  Future<void> _choosePt(BuildContext context) async {
+    final controller = TextEditingController(text: 'pt_demo');
+    final username = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pilih PT'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Masukkan username Personal Trainer. Contoh akun demo: pt_demo.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(labelText: 'Username PT'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+    if (username == null || username.isEmpty || !context.mounted) return;
+
+    final profile = context.read<ProfileProvider>();
+    final ok = await profile.choosePt(username);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'PT berhasil dipilih.'
+              : profile.errorMessage ?? 'Gagal memilih PT.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editServerUrl(BuildContext context) async {
+    final settings = context.read<SettingsProvider>();
+    final controller = TextEditingController(text: settings.apiBaseUrl);
+    final url = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Alamat Server'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Untuk emulator Android biasanya http://10.0.2.2:3000/api. '
+              'Untuk HP fisik pakai IP laptop, mis. http://192.168.1.5:3000/api.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(labelText: 'Base URL'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, settings.defaultApiBaseUrl),
+            child: const Text('Default'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+    if (url == null || !context.mounted) return;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Alamat harus diawali http:// atau https://'),
+        ),
+      );
+      return;
+    }
+    await settings.setApiBaseUrl(url);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Alamat server disimpan.')));
+  }
+
+  String _genderLabel(String? value) {
+    switch (value) {
+      case 'male':
+        return 'Laki-laki';
+      case 'female':
+        return 'Perempuan';
+      default:
+        return '-';
+    }
+  }
+
+  String _activityLabel(String? value) {
+    switch (value) {
+      case 'sedentary':
+        return 'Sangat jarang';
+      case 'light':
+        return 'Ringan';
+      case 'moderate':
+        return 'Sedang';
+      case 'active':
+        return 'Aktif';
+      case 'very_active':
+        return 'Sangat aktif';
+      default:
+        return '-';
+    }
+  }
+
+  String _number(num? value, {String suffix = ''}) {
+    if (value == null) return '-';
+    final text = value == value.roundToDouble()
+        ? value.toInt().toString()
+        : value.toString();
+    return '$text$suffix';
+  }
+
   @override
   Widget build(BuildContext context) {
-    // watch = widget ini rebuild otomatis kalau Global State berubah.
     final settings = context.watch<SettingsProvider>();
     final auth = context.watch<AuthProvider>();
+    final profile = context.watch<ProfileProvider>();
 
     return Container(
       decoration: const BoxDecoration(
@@ -22,141 +169,177 @@ class ProfilTab extends StatelessWidget {
         ),
       ),
       child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 110),
-          children: [
-            // ===== 1. Header Profil =====
-            Row(
-              children: [
-                const CircleAvatar(
-                  radius: 32,
-                  backgroundColor: Colors.white24,
-                  child: Icon(Icons.person, size: 32, color: Colors.white),
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Nama diambil dari AuthProvider (hasil login yang tersimpan)
-                    Text(auth.username ?? 'User',
-                        style: const TextStyle(
+        child: RefreshIndicator(
+          onRefresh: profile.load,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 110),
+            children: [
+              Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 32,
+                    backgroundColor: Colors.white24,
+                    child: Icon(Icons.person, size: 32, color: Colors.white),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          auth.displayName ?? 'User',
+                          style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white)),
-                    const Text('Klien',
-                        style: TextStyle(color: Colors.white70)),
-                    const SizedBox(height: 2),
-                    const Text('PT: Belum ditentukan',
-                        style: TextStyle(color: Colors.white54, fontSize: 12)),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 28),
-
-            // ===== 2. Ringkasan Health Profile =====
-            _sectionTitle('Health Profile'),
-            const SizedBox(height: 10),
-            _cardContainer(
-              child: Column(
-                children: [
-                  _infoRow('Berat Badan', '68 kg'),
-                  const Divider(color: Colors.white24, height: 20),
-                  _infoRow('Target', 'Turun 5kg'),
-                  const Divider(color: Colors.white24, height: 20),
-                  _infoRow('Alergi', 'Tidak ada'),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        // TODO: nanti arahkan ke form edit health profile
-                      },
-                      icon: const Icon(Icons.edit, size: 16, color: Colors.white),
-                      label: const Text('Edit',
-                          style: TextStyle(color: Colors.white)),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.white38),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
+                            color: Colors.white,
+                          ),
+                        ),
+                        const Text(
+                          'Klien',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          profile.hasPt
+                              ? 'PT: sudah terhubung'
+                              : 'PT: belum dipilih',
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 24),
-
-            // ===== 3. Pengaturan Akun =====
-            _sectionTitle('Pengaturan Akun'),
-            const SizedBox(height: 10),
-            _cardContainer(
-              child: Column(
-                children: [
-                  _menuRow(
-                    icon: Icons.lock_outline,
-                    label: 'Ubah Kata Sandi',
-                    onTap: () {},
-                  ),
-                  const Divider(color: Colors.white24, height: 1),
-                  // Disimpan di shared_preferences -> tetap ada setelah app ditutup
-                  _switchRow(
-                    icon: Icons.notifications_outlined,
-                    label: 'Notifikasi',
-                    value: settings.notificationsEnabled,
-                    onChanged: (val) => settings.setNotificationsEnabled(val),
-                  ),
-                  const Divider(color: Colors.white24, height: 1),
-                  // Khusus demo: membuktikan app tetap jalan dari database lokal
-                  _switchRow(
-                    icon: Icons.wifi_off,
-                    label: 'Simulasi offline (demo)',
-                    value: settings.simulateOffline,
-                    onChanged: (val) => settings.setSimulateOffline(val),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // ===== 4. Tentang Aplikasi =====
-            _sectionTitle('Lainnya'),
-            const SizedBox(height: 10),
-            _cardContainer(
-              child: _menuRow(
-                icon: Icons.help_outline,
-                label: 'Bantuan / FAQ',
-                onTap: () {},
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // ===== Logout =====
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () async {
-                  // Hapus token dari secure storage, lalu balik ke Login
-                  // dan bersihkan semua history navigasi.
-                  await context.read<AuthProvider>().logout();
-                  if (!context.mounted) return;
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(
-                        builder: (context) => const LoginScreen()),
-                    (route) => false,
-                  );
-                },
-                icon: const Icon(Icons.logout,
-                    size: 18, color: Color(0xFFF09595)),
-                label: const Text('Logout',
-                    style: TextStyle(
-                        color: Color(0xFFF09595), fontWeight: FontWeight.w600)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFFF09595)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+              const SizedBox(height: 28),
+              _sectionTitle('Health Profile'),
+              const SizedBox(height: 10),
+              _cardContainer(
+                child: Column(
+                  children: [
+                    _infoRow(
+                      'Berat Badan',
+                      _number(profile.weightCurrent, suffix: ' kg'),
+                    ),
+                    const Divider(color: Colors.white24, height: 20),
+                    _infoRow(
+                      'Target Berat',
+                      _number(profile.weightTarget, suffix: ' kg'),
+                    ),
+                    const Divider(color: Colors.white24, height: 20),
+                    _infoRow(
+                      'Tinggi Badan',
+                      _number(profile.heightCm, suffix: ' cm'),
+                    ),
+                    const Divider(color: Colors.white24, height: 20),
+                    _infoRow('Alergi', profile.allergies ?? '-'),
+                    const Divider(color: Colors.white24, height: 20),
+                    _infoRow('Jenis Kelamin', _genderLabel(profile.gender)),
+                    const Divider(color: Colors.white24, height: 20),
+                    _infoRow('Tanggal Lahir', profile.birthDate ?? '-'),
+                    const Divider(color: Colors.white24, height: 20),
+                    _infoRow(
+                      'Aktivitas',
+                      _activityLabel(profile.activityLevel),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _editProfile(context),
+                        icon: const Icon(
+                          Icons.edit,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                        label: const Text(
+                          'Edit',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Colors.white38),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+              _sectionTitle('Personal Trainer'),
+              const SizedBox(height: 10),
+              _cardContainer(
+                child: _menuRow(
+                  icon: Icons.person_add_alt_1,
+                  label: profile.hasPt ? 'Ganti PT' : 'Pilih PT',
+                  onTap: () => _choosePt(context),
+                ),
+              ),
+              const SizedBox(height: 24),
+              _sectionTitle('Pengaturan Akun'),
+              const SizedBox(height: 10),
+              _cardContainer(
+                child: Column(
+                  children: [
+                    _menuRow(
+                      icon: Icons.dns_outlined,
+                      label: 'Alamat Server',
+                      onTap: () => _editServerUrl(context),
+                    ),
+                    const Divider(color: Colors.white24, height: 1),
+                    _switchRow(
+                      icon: Icons.notifications_outlined,
+                      label: 'Notifikasi',
+                      value: settings.notificationsEnabled,
+                      onChanged: (val) => settings.setNotificationsEnabled(val),
+                    ),
+                    const Divider(color: Colors.white24, height: 1),
+                    _switchRow(
+                      icon: Icons.wifi_off,
+                      label: 'Simulasi offline (demo)',
+                      value: settings.simulateOffline,
+                      onChanged: (val) => settings.setSimulateOffline(val),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              _sectionTitle('Lainnya'),
+              const SizedBox(height: 10),
+              _cardContainer(
+                child: _menuRow(
+                  icon: Icons.help_outline,
+                  label: 'Bantuan / FAQ',
+                  onTap: () {},
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => context.read<AuthProvider>().logout(),
+                  icon: const Icon(
+                    Icons.logout,
+                    size: 18,
+                    color: Color(0xFFF09595),
+                  ),
+                  label: const Text(
+                    'Logout',
+                    style: TextStyle(
+                      color: Color(0xFFF09595),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFF09595)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -166,7 +349,10 @@ class ProfilTab extends StatelessWidget {
     return Text(
       text,
       style: const TextStyle(
-          color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
+        color: Colors.white70,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+      ),
     );
   }
 
@@ -174,7 +360,7 @@ class ProfilTab extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
+        color: Colors.white.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white24),
       ),
@@ -186,10 +372,21 @@ class ProfilTab extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-        Text(value,
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
             style: const TextStyle(
-                color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -208,7 +405,8 @@ class ProfilTab extends StatelessWidget {
             Icon(icon, color: Colors.white70, size: 20),
             const SizedBox(width: 12),
             Expanded(
-                child: Text(label, style: const TextStyle(color: Colors.white))),
+              child: Text(label, style: const TextStyle(color: Colors.white)),
+            ),
             const Icon(Icons.chevron_right, color: Colors.white38, size: 20),
           ],
         ),
@@ -229,11 +427,12 @@ class ProfilTab extends StatelessWidget {
           Icon(icon, color: Colors.white70, size: 20),
           const SizedBox(width: 12),
           Expanded(
-              child: Text(label, style: const TextStyle(color: Colors.white))),
+            child: Text(label, style: const TextStyle(color: Colors.white)),
+          ),
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFF3B82F6),
+            activeThumbColor: const Color(0xFF3B82F6),
           ),
         ],
       ),

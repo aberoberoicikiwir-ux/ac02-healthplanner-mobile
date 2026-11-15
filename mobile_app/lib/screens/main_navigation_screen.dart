@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../providers/daily_provider.dart';
+import '../providers/meal_provider.dart';
+import '../providers/workout_provider.dart';
 import 'todays_target_tab.dart';
 import 'progres_tab.dart';
 import 'insight_ai_tab.dart';
@@ -13,6 +18,16 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<WorkoutProvider>().sync();
+      context.read<MealProvider>().sync();
+      context.read<DailyProvider>().loadAll();
+    });
+  }
 
   final List<Widget> _tabs = const [
     TodaysTargetTab(),
@@ -38,10 +53,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         child: Container(
           height: 70,
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.88),
+            color: Colors.black.withValues(alpha: 0.88),
             borderRadius: BorderRadius.circular(35),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12)
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 12,
+              ),
             ],
           ),
           child: Row(
@@ -63,7 +81,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       _navItems[index]['label'],
                       style: TextStyle(
                         fontSize: 10,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                         color: isSelected ? Colors.white : Colors.white38,
                       ),
                     ),

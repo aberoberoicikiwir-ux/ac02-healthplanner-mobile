@@ -17,16 +17,21 @@ class InsightAiTab extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 20),
-            const Text('Insight AI',
-                style: TextStyle(
-                    fontSize: 26, fontWeight: FontWeight.w300, color: Colors.white)),
+            const Text(
+              'Insight AI',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w300,
+                color: Colors.white,
+              ),
+            ),
             const SizedBox(height: 20),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Row(

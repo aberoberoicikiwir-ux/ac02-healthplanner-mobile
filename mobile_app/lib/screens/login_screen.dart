@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/auth_provider.dart';
-import 'health_profile_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -38,17 +38,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
 
-    if (success) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HealthProfileGate()),
-      );
-    } else {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = auth.errorMessage;
-      });
-    }
+    // Kalau berhasil, AuthGate otomatis mengganti layar.
+    if (success) return;
+
+    setState(() {
+      _isLoading = false;
+      _errorMessage = auth.errorMessage;
+    });
   }
 
   @override
@@ -90,9 +86,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Text(
                       'Welcome',
                       style: TextStyle(
-                          fontSize: 24,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500),
+                        fontSize: 24,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                     const SizedBox(height: 24),
                     _buildField(
@@ -118,7 +115,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           color: Colors.white70,
                         ),
                         onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword),
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
                       ),
                     ),
                     if (_errorMessage != null) ...[
@@ -145,7 +143,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             shadowColor: Colors.transparent,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30)),
+                              borderRadius: BorderRadius.circular(30),
+                            ),
                           ),
                           onPressed: _isLoading ? null : _handleLogin,
                           child: _isLoading
@@ -153,12 +152,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                   height: 20,
                                   width: 20,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white),
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
                                 )
-                              : const Text('LOG IN',
+                              : const Text(
+                                  'LOG IN',
                                   style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold)),
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                         ),
                       ),
                     ),

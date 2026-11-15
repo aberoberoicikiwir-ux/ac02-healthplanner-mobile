@@ -25,21 +25,34 @@ Bagian mobile app dari capstone AC-02 Personalized Health & Workout Planner, tim
 
 ## Cara Menjalankan Aplikasi
 
-1. Nyalakan emulator Android (atau hubungkan device fisik).
-2. Dari folder `mobile_app`, jalankan:
+1. Jalankan backend lebih dulu dari folder `backend/` (lihat `backend/README.md`):
+   ```
+   npm run dev
+   ```
+2. Nyalakan emulator Android (atau hubungkan device fisik).
+3. Dari folder `mobile_app`, jalankan:
    ```
    flutter run
    ```
-3. Login dengan username dan password apa saja (autentikasi masih tiruan).
+4. Login memakai akun backend. Untuk demo: `klien_demo` / `demo12345`.
+   Akun `pt_demo` ditolak karena aplikasi ini khusus klien.
+
+Alamat backend default:
+- Android Emulator: `http://10.0.2.2:3000/api`
+- HP fisik: ganti lewat **Profil > Alamat Server** ke `http://<IP-LAN-laptop>:3000/api`
+
+Build debug mengizinkan HTTP polos (`usesCleartextTraffic`) dan sudah meminta izin INTERNET.
 
 ## Fitur yang Sudah Diimplementasikan
 
-- Login dengan status login yang tersimpan aman (tidak perlu login ulang saat app dibuka lagi)
-- Health Profile check & form input (berat, target, alergi)
+- Login ke backend asli (JWT disimpan aman), akun non-klien ditolak, sesi otomatis logout saat token kedaluwarsa
+- Health Profile: cek otomatis, isi profil lengkap, edit profil, dan pilih PT
+- Today's Target: target langkah/air/kalori, catat langkah/air/berat harian
+- Workout Plan: rencana dari PT (hari + kategori), tandai selesai (tersinkron ke server), tambah latihan lokal, hapus latihan lokal, tarik-ke-bawah untuk refresh
+- Meal Plan: menu per hari, tandai makanan sudah dimakan (tersinkron ke server)
+- Progres: grafik berat badan dan langkah harian
+- Offline-first: semua data terakhir tetap tampil saat offline; perubahan lokal dikirim saat sinkron
 - Bottom Navigation 4 tab: Today's Target, Progres, Insight AI, Profil
-- Workout Plan: tambah latihan (tombol +), tandai selesai, hapus latihan buatan sendiri (geser ke kiri), sinkronisasi, dan tarik-ke-bawah untuk refresh
-- Penanda perubahan yang belum tersinkron (ikon awan) dan tombol Sinkronkan
-- Meal Plan, Profil (pengaturan akun, logout)
 
 ## Task 9: Local Storage & Data Persistence
 
@@ -47,7 +60,7 @@ Data dipisahkan ke penyimpanan yang sesuai dengan jenisnya:
 
 | Jenis data | Penyimpanan | Isi di aplikasi ini | File |
 |---|---|---|---|
-| Data terstruktur | **Drift** (SQLite) | Daftar latihan, status selesai, status sinkron | `lib/data/local/app_database.dart` |
+| Data terstruktur | **Drift** (SQLite) | Latihan, menu, target, log harian, cache profil, status sinkron | `lib/data/local/app_database.dart` |
 | Pengaturan (kecil, tidak sensitif) | **shared_preferences** | Switch notifikasi, simulasi offline | `lib/data/local/settings_service.dart` |
 | Rahasia | **flutter_secure_storage** | Access token dan username | `lib/data/local/secure_storage_service.dart` |
 
@@ -60,7 +73,7 @@ Token **tidak** disimpan di shared_preferences.
 - **Penanda sinkronisasi**: kolom `synced` (`false` = ada perubahan lokal yang belum dikirim) dan `updatedAt` (UTC milliseconds).
 - **Stream reaktif**: `watchAllWorkouts()` memakai `.watch()`, sehingga UI otomatis diperbarui saat database berubah.
 - **Database transaction**: `upsertServerWorkouts()` dan `markSynced()` membungkus penulisan banyak baris dalam satu `transaction` (atomic).
-- **Migrasi schema**: `schemaVersion` naik dari 1 ke 2. `onUpgrade` menambah kolom `updatedAt` dan `synced` tanpa menghapus data pengguna.
+- **Migrasi schema**: `schemaVersion` naik dari 1 ke 2 (status sinkron) lalu 3 (hari/kategori latihan + tabel menu, target, log harian, cache profil) tanpa menghapus data pengguna.
 - **CRUD reaktif**: tambah (tombol +), ubah (Tandai Selesai), hapus (geser ke kiri, hanya latihan buatan sendiri).
 
 ### Alur data
@@ -70,7 +83,7 @@ UI (Consumer) <-- WorkoutProvider <-- .watch() stream <-- Drift (sumber kebenara
                                                               ^
               tulis lokal dulu (synced = false)               |
                                                               |
-              Sinkronkan: kirim yang belum synced --> FakeApiService (server)
+              Sinkronkan: kirim yang belum synced --> ApiService (backend Express)
                           lalu tandai synced = true (transaction)
                           lalu ambil data terbaru dari server (transaction)
 ```
@@ -107,11 +120,22 @@ lib/
 └── main.dart
 ```
 
-## Catatan tentang Backend
+## Integrasi Backend
 
-Backend (Express.js + MySQL + AI) dikerjakan terpisah di folder `backend/` dan belum selesai. Untuk sementara, data berasal dari `FakeApiService` yang meniru perilaku API asli (ada jeda jaringan, bisa gagal). Saat backend siap, cukup mengganti isi `lib/data/remote/fake_api_service.dart` dengan pemanggilan HTTP; database, repository, provider, dan tampilan tidak perlu diubah.
+Mobile sekarang memanggil REST API backend melalui `lib/data/remote/api_service.dart`
+(header `Authorization: Bearer <token>`). Mobile dan web tidak pernah mengakses
+database atau penyedia AI secara langsung.
 
-Untuk mendemonstrasikan mode offline, nyalakan **Simulasi offline (demo)** di tab Profil, lalu tarik layar Workout Plan ke bawah. Pesan gagal sinkron muncul, tetapi data tetap tampil dari database lokal.
+- Endpoint yang dipakai: login, profil, pilih PT, workout plan, meal plan, target, dan log harian.
+- Token JWT disimpan di `flutter_secure_storage`; 401 otomatis mengembalikan pengguna ke layar login.
+- Cache lokal dibersihkan saat logout / login akun berbeda, supaya data antar-akun tidak tercampur.
+- Tombol "+" (latihan buatan pengguna) tetap lokal karena backend belum punya endpoint-nya.
+- Langkah kaki diisi manual di form Today's Target (integrasi pedometer belum ada).
+- Tab **Insight AI** masih placeholder; nantinya hanya menampilkan hasil analisis dari backend.
+
+Untuk mendemonstrasikan mode offline, nyalakan **Simulasi offline (demo)** di tab Profil,
+lalu tarik layar Workout Plan / Meal Plan ke bawah. Pesan gagal sinkron muncul, tetapi
+data tetap tampil dari database lokal.
 
 ## Tampilan Aplikasi (Hasil Slicing)
 
