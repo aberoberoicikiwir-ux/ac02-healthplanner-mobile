@@ -15,7 +15,7 @@ Backend ini melayani aplikasi Mobile (Klien) dan Dashboard Web (Personal Trainer
 | Validasi input & perlindungan otorisasi | Selesai, teruji |
 | Pembuatan rencana mingguan oleh AI (prompt, validasi, retry, simpan `pending`, audit log, notifikasi PT) | Selesai, teruji dengan **AI tiruan (mock)** |
 | Penyedia **Gemini** | Kode ditulis, **belum diuji ke Gemini sungguhan** (butuh API key); formatnya hanya diuji dengan `fetch` palsu |
-| Penerapan hasil approve/override PT ke workout & meal plan yang dilihat klien | **Belum** |
+| Penerapan hasil approve/override PT ke workout & meal plan yang dilihat klien (+ `POST /api/pt/clients/:clientId/generate-plan`, kolom `meal_plan_items.day_of_week`) | Selesai. Logika diuji tanpa database (`npm run test:plan`, 13 tes); SQL-nya diuji oleh `test_all.sh` bagian 11b dan 11c, **yang perlu dijalankan terhadap MySQL sungguhan** |
 | Rate limiting, deployment | **Belum** |
 
 ## Teknologi
@@ -50,6 +50,10 @@ npm run dev
 
 Server berjalan di `http://localhost:3000`. Cek dengan `http://localhost:3000/api/health`.
 
+**Database yang sudah ada sebelum perubahan ini** perlu migrasi sekali: `mysql -u root healthmaxxing < migrations/001_meal_items_day_of_week.sql` (menambah `meal_plan_items.day_of_week`). Database baru dari `healthmaxxing_schema.sql` terbaru sudah memilikinya.
+
+**Coba alurnya tanpa dashboard web** (server berjalan + `npm run seed:demo`): `npm run demo:approve`. Skrip ini login sebagai PT, menyetujui rencana AI klien demo, lalu login sebagai klien dan menampilkan rencana yang sekarang terlihat.
+
 `.env` berisi rahasia dan **tidak boleh** di-commit (sudah ada di `.gitignore`).
 
 > **Format data ke Mobile/Web** (diatur di `src/config/db.js`): tanggal kalender `"YYYY-MM-DD"`, angka desimal sebagai number, boolean sebagai `true/false`. Panduan lengkap dengan contoh respons asli: [`docs/panduan_integrasi_mobile.md`](docs/panduan_integrasi_mobile.md).
@@ -58,7 +62,7 @@ Server berjalan di `http://localhost:3000`. Cek dengan `http://localhost:3000/ap
 
 ## Menjalankan tes
 
-**1. Tes end-to-end lewat HTTP (117 skenario)** — server harus sedang berjalan.
+**1. Tes end-to-end lewat HTTP** — server harus sedang berjalan.
 
 ```bash
 # database HARUS baru (skrip mengisi data uji dengan ID tetap), JANGAN muat seed.
@@ -70,7 +74,7 @@ npm run dev          # terminal 1
 bash test_all.sh     # terminal 2
 ```
 
-Hasil yang diharapkan: `HASIL: 117 lulus, 0 gagal`. Setiap kali dijalankan, database harus di-reset lagi. Kalau database sudah pernah dipakai, skrip berhenti dengan pesan `DATABASE BELUM BERSIH` beserta langkah perbaikannya. Prasyarat: `curl`, `python3`, klien `mysql` (skrip memakai `mysql -u root` tanpa password; ubah variabel `DB` di bagian atas kalau perlu).
+Hasil yang diharapkan: `HASIL: N lulus, 0 gagal` (yang menentukan adalah **0 gagal**; N lebih banyak dari 117 karena bagian 11b dan 11c ditambahkan, dan 6 tes lama di bagian 6, 11, dan 12 disesuaikan dengan perilaku approve yang baru). Setiap kali dijalankan, database harus di-reset lagi. Kalau database sudah pernah dipakai, skrip berhenti dengan pesan `DATABASE BELUM BERSIH` beserta langkah perbaikannya. Prasyarat: `curl`, `python3`, klien `mysql` (skrip memakai `mysql -u root` tanpa password; ubah variabel `DB` di bagian atas kalau perlu).
 
 Bagian 11 (AI) hanya berjalan bila `.env` berisi `AI_PROVIDER=mock` dan `INTERNAL_API_KEY` minimal 16 karakter; kalau tidak, bagian itu **dilewati** dengan pesan `[SKIP]` yang menjelaskan sebabnya.
 
@@ -138,6 +142,7 @@ backend/
 │   │   └── errorHandler.js       # error 5xx tidak membocorkan detail internal
 │   ├── routes/                   # definisi URL dan method
 │   ├── controllers/              # logika tiap endpoint
+│   ├── services/planMaterializer.js  # approve/override -> workout/meal plan + target + notifikasi (satu transaksi)
 │   ├── services/ai/              # modul AI
 │   │   ├── planner.js            # alur utama: prompt -> AI -> validasi -> simpan
 │   │   ├── validatePlan.js       # validator keluaran AI (pertahanan utama)
@@ -149,7 +154,9 @@ backend/
 │   └── utils/                    # validate, dates, clientHelper, asyncHandler
 ├── scripts/seed-demo.js          # data demo (npm run seed:demo), bukan untuk produksi
 ├── tests/ai.test.js              # 51 tes modul AI
-├── test_all.sh                   # 117 tes end-to-end
+├── tests/plan.test.js            # 13 tes penerapan rencana (tanpa database)
+├── test_all.sh                   # tes end-to-end (lihat baris HASIL di akhir)
+├── migrations/                   # perubahan skema untuk database yang SUDAH ada
 ├── docs/healthmaxxing_api_endpoints.md   # kontrak endpoint untuk Mobile/Web
 ├── healthmaxxing_schema.sql      # struktur database
 ├── healthmaxxing_seed.sql        # data master awal
@@ -173,8 +180,9 @@ Lengkapnya (method, path, body, tabel, aturan validasi, format rencana AI) ada d
 ## Batasan yang diketahui
 
 - **Gemini belum diuji sungguhan.** Efektivitas pengaman terhadap model nyata (mis. seberapa sering hasilnya ditolak validator) belum diukur.
-- **Hasil approve/override PT belum diterapkan** ke `workout_plans`/`meal_plans`; klien belum melihat rencana AI di aplikasi. Saat diterapkan, `final_output` hasil override PT harus divalidasi ulang dengan validator yang sama.
-- **`meal_plan_items` tidak punya kolom hari**, sedangkan rencana AI per hari. Perlu keputusan tim (usulan: tambah `day_of_week`) sebelum rencana bisa diterapkan.
+- **Pembuatan rencana belum otomatis/terjadwal.** PT memicunya lewat `POST /api/pt/clients/:clientId/generate-plan` (atau endpoint internal). Belum ada pemicu otomatis setelah klien mengisi profil.
+- **Rencana yang sudah ada untuk minggu yang sama tidak ditimpa** (409), karena progres checklist klien bisa hilang. Mengganti rencana yang sudah diterapkan butuh keputusan tim.
+- **Database lama perlu migrasi** `migrations/001_meal_items_day_of_week.sql` (sekali). Baris menu lama bernilai `day_of_week = NULL`.
 - Daftar alergen dicocokkan dengan **nama makanan**; makanan yang mengandung alergen tapi namanya tidak menyebutnya akan lolos (itu sebabnya nama di seed menyebut alergen utama). Nilai gizi di seed adalah perkiraan; verifikasi dengan TKPI.
 - Master data yang dikirim ke AI dibatasi 200 baris per tabel.
 - "Hari ini" dan "Senin berikutnya" dihitung dengan zona waktu server; perlu disesuaikan saat deployment agar sesuai WIB.

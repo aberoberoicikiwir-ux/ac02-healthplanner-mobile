@@ -53,7 +53,7 @@ Semua response dalam format JSON. Endpoint yang butuh login harus kirim header:
 
 | Method | Path | Deskripsi | Body Request | Tabel |
 |---|---|---|---|---|
-| GET | `/api/clients/me/meal-plans/current` | Ambil meal plan minggu ini + daftar menu | — | `meal_plans`, `meal_plan_items`, `food_reference` |
+| GET | `/api/clients/me/meal-plans/current` | Ambil meal plan dengan `week_start_date` terbaru + daftar menu (tiap item punya `day_of_week`; `null` pada data lama yang dibuat sebelum kolom itu ada). 404 bila belum ada | — | `meal_plans`, `meal_plan_items`, `food_reference` |
 | PATCH | `/api/meal-plan-items/:itemId` | Update checklist "makanan dimakan" | `{ is_completed: true }` | `meal_plan_items` |
 
 ---
@@ -82,8 +82,20 @@ Semua response dalam format JSON. Endpoint yang butuh login harus kirim header:
 | Method | Path | Deskripsi | Body Request | Tabel |
 |---|---|---|---|---|
 | GET | `/api/pt/clients/:clientId/ai-analysis/current` | Ambil hasil analisis AI minggu ini (buat direview) | — | `ai_analysis_results` |
-| PATCH | `/api/pt/ai-analysis/:analysisId/approve` | PT setuju rencana AI apa adanya | — | `ai_analysis_results` |
-| PATCH | `/api/pt/ai-analysis/:analysisId/override` | PT override manual (misal karena klien cedera) | `{ final_output: {...json...} }` | `ai_analysis_results`, `workout_plans`, `meal_plans` |
+| POST | `/api/pt/clients/:clientId/generate-plan` | PT memicu pembuatan rencana AI (status `pending`) untuk klien **bimbingannya**. Perilaku dan kode balasan sama dengan endpoint internal (bagian 10), kecuali: 400 bila `clientId` bukan bilangan bulat positif, 403 bila bukan bimbingannya, dan `details` dibuang pada 502 | `{ week_start_date? }` | `ai_analysis_results`, `audit_logs`, `notifications` |
+| PATCH | `/api/pt/ai-analysis/:analysisId/approve` | PT setuju rencana AI apa adanya **dan menerapkannya**: membuat `workout_plans`+item, `meal_plans`+item (dengan hari), `targets`, notifikasi insight untuk klien, dan audit log, dalam satu transaksi. Rencana divalidasi ulang sebelum diterapkan | — | `ai_analysis_results`, `workout_plans`, `workout_plan_items`, `meal_plans`, `meal_plan_items`, `targets`, `notifications`, `audit_logs` |
+| PATCH | `/api/pt/ai-analysis/:analysisId/override` | PT override manual (misal karena klien cedera). `final_output` berformat sama dengan rencana AI (lihat bagian 10) dan **divalidasi ulang**; bila lolos, diterapkan seperti approve (status plan `overridden`, `targets.source` = `manual`) | `{ final_output: {feedback, targets, workout, meals} }` | sama dengan approve |
+
+**Kode balasan approve / override:**
+
+| Status | Arti |
+|---|---|
+| 200 | Diterapkan. Balasan memuat `status`, `week_start_date`, `workout_plan_id`, `meal_plan_id`, `workout_items`, `meal_items`, `warnings` |
+| 400 | Override tanpa `final_output` berupa objek JSON |
+| 403 | Analisis bukan milik klien bimbingannya |
+| 404 | Analisis atau klien tidak ditemukan |
+| 409 | Analisis sudah `approved`/`overridden`, atau klien sudah punya workout/meal plan untuk minggu itu (tidak menimpa progres checklist) |
+| 422 | Rencana tidak lolos validasi (`details` berisi alasannya); **tidak ada yang berubah** |
 
 ---
 
@@ -139,7 +151,7 @@ Semua response dalam format JSON. Endpoint yang butuh login harus kirim header:
 - Latihan kategori `strength`: `sets` 1-6, `reps` 1-30. Kategori `cardio`/`flexibility`: `sets` = 1 dan **`reps` = durasi dalam menit** (5-90). Mobile perlu menampilkannya sebagai "menit" (endpoint workout sudah mengembalikan `category`).
 - Setiap hari wajib ada `breakfast`, `lunch`, `dinner`; latihan maksimal 6 hari per minggu.
 - `meta.warnings`: masalah kualitas yang tidak menolak rencana (mis. kalori menu menyimpang >40% dari target); PT yang menilai.
-- Sampai approve/override diterapkan ke tabel rencana (belum dibuat), klien belum melihat rencana ini di aplikasi.
+- Klien baru melihat rencana ini setelah PT menyetujuinya (approve/override, bagian 8): saat itu rencana diterapkan ke `workout_plans`, `meal_plans`, dan `targets`.
 
 > Mobile dan Web **tidak pernah** memanggil penyedia AI langsung. Semua lewat backend, supaya API key aman dan input/output bisa disaring.
 

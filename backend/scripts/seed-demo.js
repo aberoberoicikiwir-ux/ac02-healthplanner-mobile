@@ -81,17 +81,18 @@ async function main() {
     );
   }
 
-  // Meal plan minggu ini (disetujui). Catatan: skema saat ini belum punya kolom hari untuk menu.
+  // Meal plan minggu ini (disetujui). Butuh kolom meal_plan_items.day_of_week (lihat migrations/).
   const [mp] = await pool.query(`INSERT INTO meal_plans (client_id, week_start_date, status) VALUES (?, ?, 'approved')`, [clientId, monday]);
   const meals = [
-    ['breakfast', 0, true], ['breakfast', 1, false],
-    ['lunch', 2, false], ['lunch', 3, false],
-    ['dinner', 4, false], ['dinner', 5, false],
+    ['breakfast', 0, 'mon', true], ['breakfast', 1, 'tue', false],
+    ['lunch', 2, 'mon', false], ['lunch', 3, 'tue', false],
+    ['dinner', 4, 'mon', false], ['dinner', 5, 'tue', false],
   ];
-  for (const [type, i, done] of meals) {
-    await pool.query(`INSERT INTO meal_plan_items (plan_id, food_id, meal_type, is_completed) VALUES (?, ?, ?, ?)`, [
-      mp.insertId, foods[i].food_id, type, done,
-    ]);
+  for (const [type, i, day, done] of meals) {
+    await pool.query(
+      `INSERT INTO meal_plan_items (plan_id, food_id, meal_type, day_of_week, is_completed) VALUES (?, ?, ?, ?, ?)`,
+      [mp.insertId, foods[i].food_id, type, day, done]
+    );
   }
 
   // Log 7 hari terakhir (hari ini = 6 hari setelah awal rentang)

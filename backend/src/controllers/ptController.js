@@ -1,5 +1,8 @@
 const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const AiError = require('../services/ai/AiError');
+const { reviewAnalysis } = require('../services/planMaterializer');
+const { generateForClient } = require('./aiController');
 
 // PT hanya boleh mengakses klien yang di-assign ke dia (assigned_pt_id).
 // Tanpa pengecekan ini, PT mana pun bisa melihat/mengubah data klien PT lain.
@@ -97,7 +100,14 @@ const getCurrentAiAnalysis = asyncHandler(async (req, res) => {
   res.json(rows[0]);
 });
 
+// Membalas error AiError (404/409/422) dengan status dan detailnya; error lain dilempar ke errorHandler.
+function replyAiError(res, e) {
+  if (e instanceof AiError) return res.status(e.status).json({ message: e.message, details: e.details });
+  throw e;
+}
+
 // PATCH /api/pt/ai-analysis/:analysisId/approve
+// Menyetujui rencana AI apa adanya DAN menerapkannya ke workout/meal plan + target klien.
 const approveAiAnalysis = asyncHandler(async (req, res) => {
   const { analysisId } = req.params;
 
@@ -105,21 +115,25 @@ const approveAiAnalysis = asyncHandler(async (req, res) => {
     return res.status(403).json(FORBIDDEN);
   }
 
-  await pool.query(
-    `UPDATE ai_analysis_results
-     SET status = 'approved', final_output = ai_output,
-         reviewed_by_pt_id = ?, reviewed_at = NOW()
-     WHERE analysis_id = ?`,
-    [req.user.user_id, analysisId]
-  );
-
-  res.json({ message: 'Rencana AI disetujui.' });
+  try {
+    const result = await reviewAnalysis({
+      db: pool,
+      analysisId: Number(analysisId),
+      ptUserId: req.user.user_id,
+      decision: 'approve',
+    });
+    res.json({ message: 'Rencana AI disetujui.', ...result });
+  } catch (e) {
+    return replyAiError(res, e);
+  }
 });
 
 // PATCH /api/pt/ai-analysis/:analysisId/override
+// body: { final_output: { feedback, targets, workout, meals } }  (format sama dengan hasil AI)
+// final_output divalidasi ulang; kalau lolos, diterapkan ke workout/meal plan + target klien.
 const overrideAiAnalysis = asyncHandler(async (req, res) => {
   const { analysisId } = req.params;
-  const { final_output } = req.body;
+  const { final_output } = req.body || {};
 
   if (!final_output || typeof final_output !== 'object') {
     return res.status(400).json({ message: 'final_output wajib diisi (berupa objek JSON) untuk override.' });
@@ -129,15 +143,37 @@ const overrideAiAnalysis = asyncHandler(async (req, res) => {
     return res.status(403).json(FORBIDDEN);
   }
 
-  await pool.query(
-    `UPDATE ai_analysis_results
-     SET status = 'overridden', final_output = ?,
-         reviewed_by_pt_id = ?, reviewed_at = NOW()
-     WHERE analysis_id = ?`,
-    [JSON.stringify(final_output), req.user.user_id, analysisId]
-  );
+  try {
+    const result = await reviewAnalysis({
+      db: pool,
+      analysisId: Number(analysisId),
+      ptUserId: req.user.user_id,
+      decision: 'override',
+      finalOutput: final_output,
+    });
+    res.json({ message: 'Rencana AI berhasil di-override.', ...result });
+  } catch (e) {
+    return replyAiError(res, e);
+  }
+});
 
-  res.json({ message: 'Rencana AI berhasil di-override.' });
+// POST /api/pt/clients/:clientId/generate-plan
+// body (opsional): { week_start_date: "YYYY-MM-DD" (Senin) }  default: Senin berikutnya
+// PT memicu pembuatan rencana AI (status pending) untuk klien bimbingannya.
+const generatePlan = asyncHandler(async (req, res) => {
+  const clientId = Number(req.params.clientId);
+  if (!Number.isInteger(clientId) || clientId < 1) {
+    return res.status(400).json({ message: 'clientId harus berupa bilangan bulat positif.' });
+  }
+
+  if (!(await isMyClient(req.user.user_id, clientId))) {
+    return res.status(403).json(FORBIDDEN);
+  }
+
+  const r = await generateForClient(clientId, (req.body || {}).week_start_date);
+  // Detail kegagalan penyedia AI (502) bisa memuat info internal: jangan diteruskan ke PT.
+  if (r.status === 502) delete r.body.details;
+  res.status(r.status).json(r.body);
 });
 
 module.exports = {
@@ -147,4 +183,5 @@ module.exports = {
   getCurrentAiAnalysis,
   approveAiAnalysis,
   overrideAiAnalysis,
+  generatePlan,
 };

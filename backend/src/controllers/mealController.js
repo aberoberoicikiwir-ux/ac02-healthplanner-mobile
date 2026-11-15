@@ -20,7 +20,7 @@ const getCurrentMealPlan = asyncHandler(async (req, res) => {
 
   const plan = plans[0];
   const [items] = await pool.query(
-    `SELECT mpi.item_id, mpi.meal_type, mpi.is_completed,
+    `SELECT mpi.item_id, mpi.day_of_week, mpi.meal_type, mpi.is_completed,
             fr.food_id, fr.name AS food_name, fr.calories, fr.protein_g, fr.carbs_g, fr.fat_g
      FROM meal_plan_items mpi
      JOIN food_reference fr ON fr.food_id = mpi.food_id

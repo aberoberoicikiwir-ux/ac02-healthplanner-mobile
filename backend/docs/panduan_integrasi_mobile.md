@@ -167,13 +167,13 @@ Centang latihan: `PATCH /api/workout-plan-items/:itemId` dengan `{ "is_completed
 
 Pola sama seperti workout (404 bila belum ada). Bentuk item:
 ```json
-{ "item_id": 7, "meal_type": "breakfast", "is_completed": true,
+{ "item_id": 7, "day_of_week": "mon", "meal_type": "breakfast", "is_completed": true,
   "food_id": 1, "food_name": "Nasi putih (1 piring, 150 g)",
   "calories": 195, "protein_g": 4, "carbs_g": 42, "fat_g": 0.4 }
 ```
 Centang: `PATCH /api/meal-plan-items/:itemId` `{ "is_completed": true }`.
 
-> Menu saat ini **belum punya informasi hari** (tidak ada `day_of_week` pada item meal), jadi daftar menunya berlaku untuk satu minggu tanpa pembagian hari. Ini keterbatasan skema yang sedang dibahas tim backend.
+> Tiap item menu punya `day_of_week` (`mon`..`sun`). Pada data lama yang dibuat sebelum kolom ini ada, nilainya `null` (hari tidak diketahui); tangani dengan menampilkannya tanpa pengelompokan hari.
 
 ### Target hari ini: `GET /api/clients/me/targets/current` dan `GET /api/clients/me/daily-logs/today`
 
@@ -218,11 +218,12 @@ Sinkron pedometer: `PUT /api/clients/me/daily-logs/today` dengan field yang beru
 
 ## 7. Status data rencana (penting untuk tim Mobile)
 
-Saat ini **belum ada yang membuat workout plan / meal plan secara otomatis** untuk klien sungguhan:
+Alur sampai rencana muncul di aplikasi klien:
 
-1. Setelah `POST /clients/me/profile`, **tidak ada plan yang dibuat**. Pembuatan rencana AI dipicu lewat endpoint internal (belum ada jadwal otomatis), dan hasilnya menunggu persetujuan PT.
-2. Langkah "setelah PT menyetujui, rencana muncul di aplikasi klien" **belum dibuat** (sedang dikerjakan).
+1. Klien mengisi profil (`POST /clients/me/profile`) dan memilih PT (`POST /clients/me/pt` dengan `pt_username`). **Tidak ada plan yang dibuat otomatis** pada tahap ini.
+2. PT (atau sistem terjadwal lewat endpoint internal) memicu pembuatan rencana: `POST /api/pt/clients/:clientId/generate-plan`. Hasilnya berstatus `pending`.
+3. PT menyetujui (`PATCH /api/pt/ai-analysis/:id/approve`) atau mengubahnya (`.../override`). **Saat itulah rencana ditulis** ke workout plan, meal plan, dan target klien, serta klien menerima notifikasi `ai_insight`.
 
-Akibatnya klien baru akan terus menerima 404 di `workout-plans/current` dan `meal-plans/current`. **Tangani sebagai keadaan kosong** ("Rencana mingguanmu sedang disiapkan"), dan gunakan akun `klien_demo` untuk membangun layar yang berisi data.
+Sebelum langkah 3, klien menerima 404 di `workout-plans/current` dan `meal-plans/current`. **Tangani sebagai keadaan kosong** ("Rencana mingguanmu sedang disiapkan"). Akun `klien_demo` sudah punya plan minggu ini, dan satu rencana AI `pending` untuk minggu depan yang bisa dicoba disetujui lewat `pt_demo`.
 
 Fitur tombol "+" (klien menambah latihan sendiri) **belum punya endpoint**; sementara simpan secara lokal di aplikasi.

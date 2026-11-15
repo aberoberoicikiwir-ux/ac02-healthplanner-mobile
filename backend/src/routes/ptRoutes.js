@@ -10,6 +10,7 @@ router.get('/clients', ptController.getMyClients);
 router.get('/clients/:clientId', ptController.getClientDetail);
 router.get('/clients/:clientId/progress', ptController.getClientProgress);
 
+router.post('/clients/:clientId/generate-plan', ptController.generatePlan);
 router.get('/clients/:clientId/ai-analysis/current', ptController.getCurrentAiAnalysis);
 router.patch('/ai-analysis/:analysisId/approve', ptController.approveAiAnalysis);
 router.patch('/ai-analysis/:analysisId/override', ptController.overrideAiAnalysis);

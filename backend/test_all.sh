@@ -130,13 +130,15 @@ R=$(req GET /pt/clients/1/ai-analysis/current $PT1); check "Budi baca analisis A
 R=$(req GET /pt/clients/2/ai-analysis/current $PT1); check "Budi baca analisis AI Sari -> ditolak" 403 $(status "$R")
 R=$(req PATCH /pt/ai-analysis/2/approve $PT1);       check "Budi approve analisis Sari -> ditolak" 403 $(status "$R")
 check "  DB: analisis Sari tetap pending" pending $($DB "SELECT status FROM ai_analysis_results WHERE analysis_id=2")
-R=$(req PATCH /pt/ai-analysis/1/approve $PT1);       check "Budi approve analisis Ani" 200 $(status "$R")
-check "  DB: status approved" approved $($DB "SELECT status FROM ai_analysis_results WHERE analysis_id=1")
-check "  DB: final_output terisi dari ai_output" 'rencana A' "$($DB "SELECT JSON_UNQUOTE(JSON_EXTRACT(final_output,'\$.summary')) FROM ai_analysis_results WHERE analysis_id=1")"
+# Approve/override sekarang MENERAPKAN rencana ke klien, jadi isinya harus rencana yang valid.
+# Data uji lama ({"summary":...}) bukan rencana valid -> ditolak 422 dan tidak ada yang berubah.
+R=$(req PATCH /pt/ai-analysis/1/approve $PT1);       check "Budi approve rencana tidak valid (data lama tanpa workout/meals) -> 422" 422 $(status "$R")
+check "  DB: status analisis Ani tetap pending" pending $($DB "SELECT status FROM ai_analysis_results WHERE analysis_id=1")
+check "  DB: tidak ada workout plan baru untuk Ani" 1 "$($DB "SELECT COUNT(*) FROM workout_plans WHERE client_id=1")"
 R=$(req PATCH /pt/ai-analysis/2/override $PT2 '{}');  check "Override tanpa final_output -> 400" 400 $(status "$R")
 R=$(req PATCH /pt/ai-analysis/2/override $PT2 '{"final_output":{"summary":"Sari cedera, kurangi beban"}}')
-check "Rina override analisis Sari (cedera)" 200 $(status "$R")
-check "  DB: status overridden" overridden $($DB "SELECT status FROM ai_analysis_results WHERE analysis_id=2")
+check "Override dengan rencana tidak valid -> 422" 422 $(status "$R")
+check "  DB: status analisis Sari tetap pending" pending $($DB "SELECT status FROM ai_analysis_results WHERE analysis_id=2")
 R=$(req PATCH /pt/ai-analysis/2/override $PT2 '{"final_output":"bukan objek"}'); check "Override dengan final_output bukan objek -> 400" 400 $(status "$R")
 
 echo; echo "== 7. Daily log & target harian (Ani) =="
@@ -259,6 +261,55 @@ else
   R=$(req PATCH /pt/ai-analysis/$AID/approve $PT1);        check "PT approve rencana" 200 $(status "$R")
   check "  DB: final_output terisi" 1 "$($DB "SELECT final_output IS NOT NULL FROM ai_analysis_results WHERE analysis_id=$AID")"
   R=$(ireq "$IKEY" '{"client_id":1}');                     check "Generate lagi setelah di-approve -> 409 (tidak menimpa keputusan PT)" 409 $(status "$R")
+
+  echo; echo "== 11b. Approve MENERAPKAN rencana ke klien =="
+  check "  DB: workout plan Ani terbentuk (approved) untuk minggu $W" approved "$($DB "SELECT status FROM workout_plans WHERE client_id=1 AND week_start_date='$W'")"
+  check "  DB: jumlah item workout = jumlah di rencana AI" "$($DB "SELECT JSON_LENGTH(final_output,'\$.workout') FROM ai_analysis_results WHERE analysis_id=$AID")" "$($DB "SELECT COUNT(*) FROM workout_plan_items i JOIN workout_plans p ON p.plan_id=i.plan_id WHERE p.client_id=1 AND p.week_start_date='$W'")"
+  check "  DB: jumlah item menu = jumlah di rencana AI" "$($DB "SELECT JSON_LENGTH(final_output,'\$.meals') FROM ai_analysis_results WHERE analysis_id=$AID")" "$($DB "SELECT COUNT(*) FROM meal_plan_items i JOIN meal_plans p ON p.plan_id=i.plan_id WHERE p.client_id=1 AND p.week_start_date='$W'")"
+  check "  DB: semua item menu punya hari" 0 "$($DB "SELECT COUNT(*) FROM meal_plan_items i JOIN meal_plans p ON p.plan_id=i.plan_id WHERE p.client_id=1 AND p.week_start_date='$W' AND i.day_of_week IS NULL")"
+  check "  DB: target mingguan tersimpan (source ai)" ai "$($DB "SELECT source FROM targets WHERE client_id=1 AND week_start_date='$W'")"
+  check "  DB: Ani dapat notifikasi 'Rencana mingguan baru siap'" 1 "$($DB "SELECT COUNT(*) FROM notifications WHERE user_id=3 AND type='ai_insight' AND title='Rencana mingguan baru siap'")"
+  check "  DB: audit log 'plan.approved' tercatat" 1 "$($DB "SELECT COUNT(*) FROM audit_logs WHERE action='plan.approved' AND entity_id=$AID")"
+  R=$(req GET /clients/me/workout-plans/current $KA)
+  check "Ani melihat rencana baru di aplikasi (minggu $W)" "$W" "$(body "$R" | json "d['week_start_date']")"
+  check "  workout plan berisi item" 1 "$(body "$R" | json "1 if len(d['items'])>0 else 0")"
+  R=$(req GET /clients/me/meal-plans/current $KA)
+  check "  meal plan berisi item, tiap item punya day_of_week" 1 "$(body "$R" | json "1 if len(d['items'])>0 and all(i['day_of_week'] for i in d['items']) else 0")"
+  R=$(req PATCH /pt/ai-analysis/$AID/approve $PT1);        check "Approve dua kali -> 409 (tidak menggandakan plan)" 409 $(status "$R")
+  R=$(req PATCH /pt/ai-analysis/$AID/override $PT1 '{"final_output":{"x":1}}'); check "Override setelah approve -> 409" 409 $(status "$R")
+  check "  DB: tetap 1 workout plan untuk minggu itu" 1 "$($DB "SELECT COUNT(*) FROM workout_plans WHERE client_id=1 AND week_start_date='$W'")"
+
+  echo; echo "== 11c. PT memicu pembuatan rencana & override (klien Sari) =="
+  R=$(req POST /pt/clients/2/generate-plan $KB);   check "Klien tidak bisa memakai endpoint generate PT -> 403" 403 $(status "$R")
+  R=$(req POST /pt/clients/2/generate-plan $PT1);  check "Budi generate untuk Sari (BUKAN bimbingannya) -> 403" 403 $(status "$R")
+  R=$(req POST /pt/clients/abc/generate-plan $PT2); check "clientId bukan angka -> 400" 400 $(status "$R")
+  R=$(req POST /pt/clients/2/generate-plan "");    check "Generate tanpa token -> 401" 401 $(status "$R")
+  R=$(req POST /pt/clients/2/generate-plan $PT2 '{"week_start_date":"2030-01-08"}'); check "week_start_date bukan Senin -> 400" 400 $(status "$R")
+  R=$(req POST /pt/clients/2/generate-plan $PT2)
+  check "Rina generate rencana untuk Sari -> 201" 201 $(status "$R")
+  AID2=$(body "$R" | json "d['analysis_id']")
+  check "  status pending" pending "$(body "$R" | json "d['status']")"
+
+  R=$(req PATCH /pt/ai-analysis/$AID2/override $PT2 '{"final_output":{"feedback":"terlalu pendek"}}')
+  check "Rina override dengan rencana tidak lengkap -> 422 (divalidasi ulang)" 422 $(status "$R")
+  check "  respons menyertakan daftar kesalahan" 1 "$(body "$R" | json "1 if len(d.get('details',[]))>0 else 0")"
+  check "  DB: analisis Sari tetap pending" pending "$($DB "SELECT status FROM ai_analysis_results WHERE analysis_id=$AID2")"
+  check "  DB: belum ada workout plan Sari untuk minggu $W" 0 "$($DB "SELECT COUNT(*) FROM workout_plans WHERE client_id=2 AND week_start_date='$W'")"
+
+  MYR="${DB% -e} -r -e"   # sama dengan $DB, tetapi --raw (JSON tidak di-escape)
+  OVBODY=$($MYR "SELECT ai_output FROM ai_analysis_results WHERE analysis_id=$AID2" | python3 -c "
+import sys, json
+d = json.loads(sys.stdin.read())
+d['targets']['steps'] = 5000
+d['feedback'] = 'Sari cedera lutut, kurangi beban latihan kaki.'
+print(json.dumps({'final_output': d}))")
+  R=$(req PATCH /pt/ai-analysis/$AID2/override $PT2 "$OVBODY")
+  check "Rina override rencana Sari (cedera) -> 200" 200 $(status "$R")
+  check "  DB: analisis berstatus overridden" overridden "$($DB "SELECT status FROM ai_analysis_results WHERE analysis_id=$AID2")"
+  check "  DB: workout plan Sari berstatus overridden" overridden "$($DB "SELECT status FROM workout_plans WHERE client_id=2 AND week_start_date='$W'")"
+  check "  DB: target langkah = hasil edit PT, source manual" "5000|manual" "$($DB "SELECT CONCAT(target_steps,'|',source) FROM targets WHERE client_id=2 AND week_start_date='$W'")"
+  check "  DB: Sari dapat notifikasi berisi catatan PT" 1 "$($DB "SELECT COUNT(*) FROM notifications WHERE user_id=4 AND type='ai_insight' AND message LIKE '%cedera lutut%'")"
+  check "  DB: audit log 'plan.overridden' tercatat" 1 "$($DB "SELECT COUNT(*) FROM audit_logs WHERE action='plan.overridden' AND entity_id=$AID2")"
 fi
 
 echo; echo "== 12. Format data untuk Mobile & profil minimal =="
@@ -266,7 +317,7 @@ R=$(req GET /clients/me/profile $KA)
 check "birth_date berupa tanggal polos (tidak bergeser zona waktu)" "2000-05-10" "$(body "$R" | json "d['birth_date']")"
 check "height_cm dan weight_current berupa angka, bukan teks" "int-or-float" "$(body "$R" | json "'int-or-float' if all(isinstance(d[k],(int,float)) for k in ('height_cm','weight_current','weight_target')) else 'teks'")"
 R=$(req GET /clients/me/workout-plans/current $KA)
-check "week_start_date workout plan berupa tanggal polos" "2026-10-12" "$(body "$R" | json "d['week_start_date']")"
+check "week_start_date workout plan berupa tanggal polos YYYY-MM-DD (tanpa jam/zona waktu)" True "$(body "$R" | json "len(d['week_start_date'])==10 and d['week_start_date'][4]=='-' and 'T' not in d['week_start_date']")"
 check "is_completed berupa boolean (true/false), bukan 1/0" bool "$(body "$R" | json "type(d['items'][0]['is_completed']).__name__")"
 R=$(req GET /clients/me/daily-logs/today $KA)
 check "water_liters berupa angka" "int-or-float" "$(body "$R" | json "'int-or-float' if isinstance(d['water_liters'],(int,float)) else 'teks'")"
