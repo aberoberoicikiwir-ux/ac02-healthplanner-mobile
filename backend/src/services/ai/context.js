@@ -118,4 +118,150 @@ async function buildContext(db, client, weekStart) {
   return { data, validation };
 }
 
-module.exports = { loadClient, buildContext, ageOn };
+async function loadClientByUserId(db, userId) {
+  const [rows] = await db.query(
+    'SELECT client_id FROM client_profiles WHERE user_id = ?',
+    [userId]
+  );
+  if (!rows[0]) return null;
+  return loadClient(db, rows[0].client_id);
+}
+
+// Konteks untuk "Tanya Coach". Lebih ringkas daripada konteks penyusun rencana:
+// hanya profil anonim, log 14 hari terakhir, target, dan ringkasan rencana aktif.
+// Nama, email, username, dan ID pengguna TIDAK pernah dimasukkan.
+async function buildCoachContext(db, client) {
+  const today = new Date().toISOString().slice(0, 10);
+  const terms = allergyTerms(client.allergies);
+
+  const [logRows] = await db.query(
+    `SELECT DATE_FORMAT(log_date, '%Y-%m-%d') AS date, weight_kg, steps, water_liters
+     FROM daily_logs
+     WHERE client_id = ?
+     ORDER BY log_date DESC
+     LIMIT 14`,
+    [client.client_id]
+  );
+
+  const [targetRows] = await db.query(
+    `SELECT DATE_FORMAT(week_start_date, '%Y-%m-%d') AS week_start_date,
+            target_steps, target_water_liters, target_calories
+     FROM targets WHERE client_id = ?
+     ORDER BY week_start_date DESC LIMIT 1`,
+    [client.client_id]
+  );
+
+  const [workoutPlanRows] = await db.query(
+    `SELECT plan_id, DATE_FORMAT(week_start_date, '%Y-%m-%d') AS week_start_date, status
+     FROM workout_plans WHERE client_id = ?
+     ORDER BY week_start_date DESC LIMIT 1`,
+    [client.client_id]
+  );
+
+  const [mealPlanRows] = await db.query(
+    `SELECT plan_id, DATE_FORMAT(week_start_date, '%Y-%m-%d') AS week_start_date, status
+     FROM meal_plans WHERE client_id = ?
+     ORDER BY week_start_date DESC LIMIT 1`,
+    [client.client_id]
+  );
+
+  let currentPlan = null;
+  if (workoutPlanRows[0] || mealPlanRows[0]) {
+    const workoutItems = [];
+    const mealItems = [];
+
+    if (workoutPlanRows[0]) {
+      const [rows] = await db.query(
+        `SELECT i.day_of_week, i.sets, i.reps, i.is_completed,
+                e.name, e.category
+         FROM workout_plan_items i
+         JOIN exercise_reference e ON e.exercise_id = i.exercise_id
+         WHERE i.plan_id = ?
+         ORDER BY i.day_of_week, i.item_id`,
+        [workoutPlanRows[0].plan_id]
+      );
+      for (const r of rows) {
+        workoutItems.push({
+          day: r.day_of_week,
+          exercise: r.name,
+          category: r.category,
+          sets: Number(r.sets),
+          reps: Number(r.reps),
+          completed: Boolean(r.is_completed),
+        });
+      }
+    }
+
+    if (mealPlanRows[0]) {
+      const [rows] = await db.query(
+        `SELECT i.day_of_week, i.meal_type, i.is_completed,
+                f.name, f.calories
+         FROM meal_plan_items i
+         JOIN food_reference f ON f.food_id = i.food_id
+         WHERE i.plan_id = ?
+         ORDER BY i.day_of_week, i.item_id`,
+        [mealPlanRows[0].plan_id]
+      );
+      for (const r of rows) {
+        mealItems.push({
+          day: r.day_of_week,
+          meal_type: r.meal_type,
+          food: r.name,
+          calories: num(r.calories),
+          completed: Boolean(r.is_completed),
+        });
+      }
+    }
+
+    currentPlan = {
+      workout_week_start: workoutPlanRows[0]?.week_start_date ?? null,
+      workout_status: workoutPlanRows[0]?.status ?? null,
+      meal_week_start: mealPlanRows[0]?.week_start_date ?? null,
+      meal_status: mealPlanRows[0]?.status ?? null,
+      workout: workoutItems,
+      meals: mealItems,
+      workout_adherence: {
+        completed: workoutItems.filter((i) => i.completed).length,
+        total: workoutItems.length,
+      },
+      meal_adherence: {
+        completed: mealItems.filter((i) => i.completed).length,
+        total: mealItems.length,
+      },
+    };
+  }
+
+  const logs = logRows
+    .slice()
+    .reverse()
+    .map((l) => ({
+      date: l.date,
+      weight_kg: num(l.weight_kg),
+      steps: l.steps == null ? null : Number(l.steps),
+      water_liters: num(l.water_liters),
+    }));
+
+  return {
+    client: {
+      age: ageOn(client.birth_date, today),
+      gender: client.gender || null,
+      height_cm: num(client.height_cm),
+      weight_current_kg: num(client.weight_current),
+      weight_target_kg: num(client.weight_target),
+      activity_level: client.activity_level || null,
+      allergy_keywords: terms,
+    },
+    recent_logs: logs,
+    targets: targetRows[0]
+      ? {
+          week_start_date: targetRows[0].week_start_date,
+          steps: Number(targetRows[0].target_steps),
+          water_liters: num(targetRows[0].target_water_liters),
+          calories: Number(targetRows[0].target_calories),
+        }
+      : null,
+    current_plan: currentPlan,
+  };
+}
+
+module.exports = { loadClient, loadClientByUserId, buildContext, buildCoachContext, ageOn };

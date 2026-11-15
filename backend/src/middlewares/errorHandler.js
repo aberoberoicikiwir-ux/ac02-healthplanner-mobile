@@ -11,10 +11,13 @@ function errorHandler(err, req, res, next) {
 
   // Error 5xx bisa berisi detail internal (mis. isi query SQL / struktur tabel),
   // jadi ke klien cukup dikirim pesan umum. Detail lengkap tetap tercatat di console.
+  // Pengecualian: error yang sengaja menyiapkan publicMessage (mis. kegagalan AI).
   const status = err.status || 500;
-  res.status(status).json({
-    message: status >= 500 ? 'Terjadi kesalahan pada server.' : err.message,
-  });
+  const message =
+    status >= 500
+      ? err.publicMessage || 'Terjadi kesalahan pada server.'
+      : err.message;
+  res.status(status).json({ message });
 }
 
 module.exports = errorHandler;

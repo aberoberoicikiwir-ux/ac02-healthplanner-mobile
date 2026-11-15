@@ -67,6 +67,40 @@ Semua response dalam format JSON. Endpoint yang butuh login harus kirim header:
 
 ---
 
+## 6b. Tanya Coach AI (Mobile - Klien)
+
+AI dipanggil **hanya dari backend**. Mobile tidak pernah memegang API key Gemini.
+
+| Method | Path | Deskripsi | Body Request | Tabel |
+|---|---|---|---|---|
+| GET | `/api/clients/me/ai-coach/messages?limit=20` | Riwayat chat milik klien (lama ke baru) | - | `ai_coach_messages` |
+| POST | `/api/clients/me/ai-coach/messages` | Kirim pertanyaan ke Coach AI | `{ message }` (3-500 karakter) | `ai_coach_messages`, `audit_logs` |
+| DELETE | `/api/clients/me/ai-coach/messages` | Hapus seluruh riwayat chat klien | - | `ai_coach_messages` |
+
+Aturan:
+- Hanya role `klien`. PT **tidak punya endpoint** untuk membaca chat klien.
+- Maksimal **20 pertanyaan per 24 jam per klien** (bisa diubah lewat `AI_COACH_DAILY_LIMIT`); lewat batas -> 429.
+- Pertanyaan tentang obat, diagnosis, kehamilan, cedera, atau kondisi medis **tidak dikirim ke AI**; langsung dijawab arahan ke dokter/PT (`safety_refusal: true`).
+- Jawaban divalidasi: tanpa tautan, tanpa saran medis berisiko, panjang 20-600 karakter.
+- Konteks yang dikirim ke AI sudah anonim (tanpa nama/email/username/ID).
+- Provider mengikuti `AI_PROVIDER` (`mock` atau `gemini`).
+
+Contoh respons POST (201):
+```json
+{
+  "user_message": { "message_id": 11, "role": "user", "content": "Apa manfaat squat?" },
+  "reply": {
+    "message_id": 12,
+    "role": "assistant",
+    "content": "Squat melatih otot kaki dan inti tubuh. Jaga punggung netral, turun terkontrol, dan sesuaikan beban dengan rencana PT."
+  },
+  "category": "latihan",
+  "safety_refusal": false
+}
+```
+
+Contoh pertanyaan berisiko: POST `{ "message": "Obat apa untuk nyeri dada saya?" }` -> 201 dengan `safety_refusal: true` dan arahan ke dokter/PT.
+
 ## 7. Dashboard PT — Daftar & Detail Klien (Web)
 
 | Method | Path | Deskripsi | Body Request | Tabel |

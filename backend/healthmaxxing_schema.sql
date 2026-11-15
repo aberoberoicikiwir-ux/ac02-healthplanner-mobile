@@ -205,6 +205,23 @@ CREATE TABLE ai_analysis_results (
         ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+-- Riwayat chat "Tanya Coach" (AI). Disimpan per klien; PT tidak punya akses.
+CREATE TABLE ai_coach_messages (
+    message_id   INT AUTO_INCREMENT PRIMARY KEY,
+    client_id    INT NOT NULL,
+    `role`       ENUM('user', 'assistant') NOT NULL,
+    content      TEXT NOT NULL,
+    provider     VARCHAR(20) NULL,
+    model        VARCHAR(100) NULL,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    KEY idx_coach_client_time (client_id, created_at),
+
+    CONSTRAINT fk_coach_messages_client
+        FOREIGN KEY (client_id) REFERENCES client_profiles(client_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- ------------------------------------------------------------
 -- NOTIFICATIONS (AI insight & reminders)
 -- ------------------------------------------------------------
