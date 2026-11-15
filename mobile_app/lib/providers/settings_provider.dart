@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../data/local/settings_service.dart';
 
 /// Global State untuk pengaturan. Nilainya disimpan di shared_preferences,
@@ -10,6 +11,8 @@ class SettingsProvider extends ChangeNotifier {
 
   bool get notificationsEnabled => _service.notificationsEnabled;
   bool get simulateOffline => _service.simulateOffline;
+  String get apiBaseUrl => _service.apiBaseUrl;
+  String get defaultApiBaseUrl => _service.defaultApiBaseUrl;
 
   Future<void> setNotificationsEnabled(bool value) async {
     await _service.setNotificationsEnabled(value);
@@ -18,6 +21,11 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> setSimulateOffline(bool value) async {
     await _service.setSimulateOffline(value);
+    notifyListeners();
+  }
+
+  Future<void> setApiBaseUrl(String value) async {
+    await _service.setApiBaseUrl(value);
     notifyListeners();
   }
 }

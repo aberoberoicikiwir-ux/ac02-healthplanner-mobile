@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+
 import '../local/settings_service.dart';
 
 /// API TIRUAN. Alurnya sama seperti API asli (ada delay, bisa gagal),
@@ -32,21 +33,24 @@ class FakeApiService {
         'id': '1',
         'name': 'Push Up',
         'detail': '3 sets x 15 reps',
-        'benefit': 'This exercise works the chest, shoulders, and triceps. '
+        'benefit':
+            'This exercise works the chest, shoulders, and triceps. '
             'Keep your body straight from head to heels throughout the movement.',
       },
       {
         'id': '2',
         'name': 'Squat',
         'detail': '3 sets x 20 reps',
-        'benefit': 'This exercise works the thighs and glutes. '
+        'benefit':
+            'This exercise works the thighs and glutes. '
             'Keep your knees behind your toes when bending.',
       },
       {
         'id': '3',
         'name': 'Plank',
         'detail': '3 sets x 45 sec',
-        'benefit': 'This exercise strengthens the core. '
+        'benefit':
+            'This exercise strengthens the core. '
             'Keep your back flat, avoid letting your hips sag or rise.',
       },
     ];

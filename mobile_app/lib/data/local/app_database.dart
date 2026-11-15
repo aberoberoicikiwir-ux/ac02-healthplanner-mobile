@@ -15,6 +15,13 @@ class WorkoutEntries extends Table {
   TextColumn get name => text()();
   TextColumn get detail => text()();
   TextColumn get benefit => text()();
+
+  /// Schema v3: hari dari rencana server, mis. "mon". Null untuk latihan lokal.
+  TextColumn get dayOfWeek => text().nullable()();
+
+  /// Schema v3: kategori latihan, mis. "strength", "cardio", "flexibility".
+  TextColumn get category => text().nullable()();
+
   BoolColumn get isDone => boolean().withDefault(const Constant(false))();
 
   /// Penanda cache: kapan data ini terakhir diambil dari server (UTC millis).
@@ -24,68 +31,156 @@ class WorkoutEntries extends Table {
   IntColumn get updatedAt => integer().withDefault(const Constant(0))();
 
   /// Schema v2: false = ada perubahan lokal yang belum dikirim ke server.
-  /// Setiap penulisan lokal dimulai dengan synced = false (pola offline-first).
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [WorkoutEntries])
+@DataClassName('MealEntry')
+class MealEntries extends Table {
+  TextColumn get id => text()();
+  TextColumn get dayOfWeek => text().nullable()();
+  TextColumn get mealType => text()();
+  TextColumn get foodName => text()();
+  IntColumn get calories => integer().nullable()();
+  RealColumn get proteinG => real().nullable()();
+  RealColumn get carbsG => real().nullable()();
+  RealColumn get fatG => real().nullable()();
+  BoolColumn get isDone => boolean().withDefault(const Constant(false))();
+  IntColumn get lastFetched => integer()();
+  IntColumn get updatedAt => integer().withDefault(const Constant(0))();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DataClassName('TargetEntry')
+class TargetEntries extends Table {
+  TextColumn get id => text()(); // selalu 'current'
+  TextColumn get weekStartDate => text().nullable()();
+  IntColumn get targetSteps => integer().nullable()();
+  RealColumn get targetWaterLiters => real().nullable()();
+  IntColumn get targetCalories => integer().nullable()();
+  TextColumn get source => text().nullable()();
+  IntColumn get lastFetched => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DataClassName('DailyLogEntry')
+class DailyLogEntries extends Table {
+  TextColumn get logDate => text()(); // "YYYY-MM-DD"
+  RealColumn get weightKg => real().nullable()();
+  IntColumn get steps => integer().nullable()();
+  RealColumn get waterLiters => real().nullable()();
+  RealColumn get caloriesBurned => real().nullable()();
+  IntColumn get lastFetched => integer()();
+  IntColumn get updatedAt => integer().withDefault(const Constant(0))();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {logDate};
+}
+
+@DataClassName('ClientProfileEntry')
+class ClientProfileEntries extends Table {
+  TextColumn get id => text()(); // selalu 'me'
+  TextColumn get payload => text()(); // JSON profil dari server
+  IntColumn get lastFetched => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DriftDatabase(
+  tables: [
+    WorkoutEntries,
+    MealEntries,
+    TargetEntries,
+    DailyLogEntries,
+    ClientProfileEntries,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'healthmaxxing_db'));
 
-  /// Naik dari 1 ke 2 karena ada kolom baru (updatedAt dan synced).
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
-  /// MIGRASI: mengubah database versi lama ke versi baru tanpa menghapus
-  /// data pengguna. Pengguna yang masih di v1 mendapat dua kolom baru.
+  /// MIGRASI: v1 -> v2 -> v3 tanpa menghapus data pengguna.
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onUpgrade: (m, from, to) async {
-          if (from < 2) {
-            await m.addColumn(workoutEntries, workoutEntries.updatedAt);
-            await m.addColumn(workoutEntries, workoutEntries.synced);
-            // Baris lama berasal dari server, jadi dianggap sudah tersinkron.
-            await customStatement('UPDATE workout_entries SET synced = 1;');
-          }
-        },
-      );
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(workoutEntries, workoutEntries.updatedAt);
+        await m.addColumn(workoutEntries, workoutEntries.synced);
+        await customStatement('UPDATE workout_entries SET synced = 1;');
+      }
+      if (from < 3) {
+        await m.addColumn(workoutEntries, workoutEntries.dayOfWeek);
+        await m.addColumn(workoutEntries, workoutEntries.category);
+        await m.createTable(mealEntries);
+        await m.createTable(targetEntries);
+        await m.createTable(dailyLogEntries);
+        await m.createTable(clientProfileEntries);
+      }
+    },
+  );
 
-  /// STREAM REAKTIF: setiap ada perubahan di tabel, stream ini otomatis
-  /// mengirim daftar terbaru, sehingga UI ikut update tanpa dipanggil manual.
+  // ================================================================ workout
   Stream<List<WorkoutEntry>> watchAllWorkouts() {
-    return (select(workoutEntries)
-          ..orderBy([(t) => OrderingTerm.asc(t.id)]))
-        .watch();
+    return (select(
+      workoutEntries,
+    )..orderBy([(t) => OrderingTerm.asc(t.id)])).watch();
   }
 
-  /// DATABASE TRANSACTION (data dari server): semua baris ditulis sekaligus
-  /// (atomic). Satu baris gagal -> semua dibatalkan (rollback).
-  ///
-  /// Kalau id sudah ada, HANYA kolom milik server yang diperbarui. isDone,
-  /// synced, dan updatedAt (milik pengguna) tidak ditimpa, jadi perubahan
-  /// lokal yang belum terkirim tidak hilang.
+  /// Data server: baris baru ditambahkan; baris lama hanya ditimpa kolom
+  /// milik server. Status selesai lokal yang belum terkirim (synced=false)
+  /// tidak ditimpa.
   Future<void> upsertServerWorkouts(List<WorkoutEntriesCompanion> rows) {
     return transaction(() async {
       for (final row in rows) {
-        await into(workoutEntries).insert(
-          row,
-          onConflict: DoUpdate(
-            (_) => WorkoutEntriesCompanion(
+        final id = row.id.value;
+        final existing = await (select(
+          workoutEntries,
+        )..where((t) => t.id.equals(id))).getSingleOrNull();
+
+        if (existing == null) {
+          await into(workoutEntries).insert(row);
+        } else {
+          final keepLocalDone = !existing.synced;
+          await (update(workoutEntries)..where((t) => t.id.equals(id))).write(
+            WorkoutEntriesCompanion(
               name: row.name,
               detail: row.detail,
               benefit: row.benefit,
+              dayOfWeek: row.dayOfWeek,
+              category: row.category,
               lastFetched: row.lastFetched,
+              isDone: keepLocalDone ? const Value.absent() : row.isDone,
             ),
-          ),
-        );
+          );
+        }
       }
     });
   }
 
-  /// CREATE: latihan baru dari pengguna. Dimulai dengan synced = false.
+  /// Hapus baris server yang tidak ada lagi di respons terbaru.
+  /// Baris "local-" (buatan pengguna) selalu dipertahankan.
+  Future<void> deleteStaleServerWorkouts(Set<String> keepIds) async {
+    await (delete(workoutEntries)..where((t) {
+          Expression<bool> predicate = t.id.like('local-%').not();
+          if (keepIds.isNotEmpty) {
+            predicate = predicate & t.id.isNotIn(keepIds);
+          }
+          return predicate;
+        }))
+        .go();
+  }
+
   Future<void> insertWorkout({
     required String id,
     required String name,
@@ -105,7 +200,6 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  /// UPDATE: tandai selesai. Perubahan lokal -> synced = false.
   Future<void> setDone(String id, bool value) {
     return (update(workoutEntries)..where((t) => t.id.equals(id))).write(
       WorkoutEntriesCompanion(
@@ -116,29 +210,251 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  /// DELETE: hapus satu latihan.
   Future<void> deleteWorkout(String id) {
     return (delete(workoutEntries)..where((t) => t.id.equals(id))).go();
   }
 
-  /// Baris yang punya perubahan lokal dan belum dikirim ke server.
   Future<List<WorkoutEntry>> getUnsyncedWorkouts() {
-    return (select(workoutEntries)..where((t) => t.synced.equals(false)))
-        .get();
+    return (select(workoutEntries)..where((t) => t.synced.equals(false))).get();
   }
 
-  /// DATABASE TRANSACTION (setelah sinkron): tandai baris sebagai tersinkron
-  /// dalam satu transaksi. Syarat updatedAt harus sama dengan yang dikirim,
-  /// jadi kalau pengguna mengubah baris saat pengiriman berlangsung,
-  /// perubahan baru itu tetap berstatus belum tersinkron.
   Future<void> markSynced(List<WorkoutEntry> sent) {
     return transaction(() async {
       for (final row in sent) {
-        await (update(workoutEntries)
-              ..where((t) =>
-                  t.id.equals(row.id) & t.updatedAt.equals(row.updatedAt)))
+        await (update(workoutEntries)..where(
+              (t) => t.id.equals(row.id) & t.updatedAt.equals(row.updatedAt),
+            ))
             .write(const WorkoutEntriesCompanion(synced: Value(true)));
       }
+    });
+  }
+
+  // =================================================================== meal
+  Stream<List<MealEntry>> watchAllMeals() {
+    return (select(mealEntries)..orderBy([
+          (t) => OrderingTerm.asc(t.dayOfWeek),
+          (t) => OrderingTerm.asc(t.mealType),
+          (t) => OrderingTerm.asc(t.id),
+        ]))
+        .watch();
+  }
+
+  Future<void> upsertServerMeals(List<MealEntriesCompanion> rows) {
+    return transaction(() async {
+      for (final row in rows) {
+        final id = row.id.value;
+        final existing = await (select(
+          mealEntries,
+        )..where((t) => t.id.equals(id))).getSingleOrNull();
+
+        if (existing == null) {
+          await into(mealEntries).insert(row);
+        } else {
+          final keepLocalDone = !existing.synced;
+          await (update(mealEntries)..where((t) => t.id.equals(id))).write(
+            MealEntriesCompanion(
+              dayOfWeek: row.dayOfWeek,
+              mealType: row.mealType,
+              foodName: row.foodName,
+              calories: row.calories,
+              proteinG: row.proteinG,
+              carbsG: row.carbsG,
+              fatG: row.fatG,
+              lastFetched: row.lastFetched,
+              isDone: keepLocalDone ? const Value.absent() : row.isDone,
+            ),
+          );
+        }
+      }
+    });
+  }
+
+  Future<void> deleteStaleServerMeals(Set<String> keepIds) async {
+    if (keepIds.isEmpty) {
+      await delete(mealEntries).go();
+      return;
+    }
+    await (delete(mealEntries)..where((t) => t.id.isNotIn(keepIds))).go();
+  }
+
+  Future<void> setMealDone(String id, bool value) {
+    return (update(mealEntries)..where((t) => t.id.equals(id))).write(
+      MealEntriesCompanion(
+        isDone: Value(value),
+        synced: const Value(false),
+        updatedAt: Value(nowUtcMillis()),
+      ),
+    );
+  }
+
+  Future<void> deleteMeal(String id) {
+    return (delete(mealEntries)..where((t) => t.id.equals(id))).go();
+  }
+
+  Future<List<MealEntry>> getUnsyncedMeals() {
+    return (select(mealEntries)..where((t) => t.synced.equals(false))).get();
+  }
+
+  Future<void> markMealsSynced(List<MealEntry> sent) {
+    return transaction(() async {
+      for (final row in sent) {
+        await (update(mealEntries)..where(
+              (t) => t.id.equals(row.id) & t.updatedAt.equals(row.updatedAt),
+            ))
+            .write(const MealEntriesCompanion(synced: Value(true)));
+      }
+    });
+  }
+
+  // ================================================================= target
+  Future<void> upsertTarget(TargetEntriesCompanion row) =>
+      into(targetEntries).insertOnConflictUpdate(row);
+
+  Future<TargetEntry?> getTarget() {
+    return (select(
+      targetEntries,
+    )..where((t) => t.id.equals('current'))).getSingleOrNull();
+  }
+
+  // ================================================ daily logs & profile
+  Future<void> upsertServerDailyLogs(List<DailyLogEntriesCompanion> rows) {
+    return transaction(() async {
+      for (final row in rows) {
+        final date = row.logDate.value;
+        final existing = await (select(
+          dailyLogEntries,
+        )..where((t) => t.logDate.equals(date))).getSingleOrNull();
+
+        if (existing == null) {
+          await into(dailyLogEntries).insert(row);
+        } else if (existing.synced) {
+          await (update(
+            dailyLogEntries,
+          )..where((t) => t.logDate.equals(date))).write(
+            DailyLogEntriesCompanion(
+              weightKg: row.weightKg,
+              steps: row.steps,
+              waterLiters: row.waterLiters,
+              caloriesBurned: row.caloriesBurned,
+              lastFetched: row.lastFetched,
+            ),
+          );
+        }
+      }
+    });
+  }
+
+  Future<void> setLocalTodayLog({
+    required String logDate,
+    int? steps,
+    double? waterLiters,
+    double? weightKg,
+  }) async {
+    final existing = await (select(
+      dailyLogEntries,
+    )..where((t) => t.logDate.equals(logDate))).getSingleOrNull();
+
+    if (existing == null) {
+      await into(dailyLogEntries).insert(
+        DailyLogEntriesCompanion.insert(
+          logDate: logDate,
+          lastFetched: 0,
+          steps: Value(steps),
+          waterLiters: Value(waterLiters),
+          weightKg: Value(weightKg),
+          updatedAt: Value(nowUtcMillis()),
+          synced: const Value(false),
+        ),
+      );
+      return;
+    }
+
+    await (update(
+      dailyLogEntries,
+    )..where((t) => t.logDate.equals(logDate))).write(
+      DailyLogEntriesCompanion(
+        steps: steps == null ? const Value.absent() : Value(steps),
+        waterLiters: waterLiters == null
+            ? const Value.absent()
+            : Value(waterLiters),
+        weightKg: weightKg == null ? const Value.absent() : Value(weightKg),
+        updatedAt: Value(nowUtcMillis()),
+        synced: const Value(false),
+      ),
+    );
+  }
+
+  Future<DailyLogEntry?> getDailyLog(String logDate) {
+    return (select(
+      dailyLogEntries,
+    )..where((t) => t.logDate.equals(logDate))).getSingleOrNull();
+  }
+
+  Future<List<DailyLogEntry>> getDailyLogsSince(String fromDate) {
+    return (select(dailyLogEntries)
+          ..where((t) => t.logDate.isBiggerOrEqualValue(fromDate))
+          ..orderBy([(t) => OrderingTerm.asc(t.logDate)]))
+        .get();
+  }
+
+  Future<List<DailyLogEntry>> getUnsyncedDailyLogs() {
+    return (select(
+      dailyLogEntries,
+    )..where((t) => t.synced.equals(false))).get();
+  }
+
+  Future<void> markDailyLogsSynced(List<DailyLogEntry> sent) {
+    return transaction(() async {
+      for (final row in sent) {
+        await (update(dailyLogEntries)..where(
+              (t) =>
+                  t.logDate.equals(row.logDate) &
+                  t.updatedAt.equals(row.updatedAt),
+            ))
+            .write(const DailyLogEntriesCompanion(synced: Value(true)));
+      }
+    });
+  }
+
+  /// Hapus log tersinkron yang tidak lagi ada di respons server (mis. sisa
+  /// akun lain). Log lokal yang belum terkirim tetap dipertahankan.
+  Future<void> deleteStaleSyncedDailyLogs(Set<String> keepDates) async {
+    await (delete(dailyLogEntries)..where((t) {
+          Expression<bool> predicate = t.synced.equals(true);
+          if (keepDates.isNotEmpty) {
+            predicate = predicate & t.logDate.isNotIn(keepDates);
+          }
+          return predicate;
+        }))
+        .go();
+  }
+
+  Future<void> upsertClientProfile(String payload) {
+    return into(clientProfileEntries).insertOnConflictUpdate(
+      ClientProfileEntriesCompanion.insert(
+        id: 'me',
+        payload: payload,
+        lastFetched: nowUtcMillis(),
+      ),
+    );
+  }
+
+  Future<String?> getClientProfilePayload() async {
+    final row = await (select(
+      clientProfileEntries,
+    )..where((t) => t.id.equals('me'))).getSingleOrNull();
+    return row?.payload;
+  }
+
+  /// Bersihkan semua data pengguna saat logout agar akun berikutnya tidak
+  /// melihat cache akun sebelumnya.
+  Future<void> clearUserData() async {
+    await transaction(() async {
+      await delete(workoutEntries).go();
+      await delete(mealEntries).go();
+      await delete(targetEntries).go();
+      await delete(dailyLogEntries).go();
+      await delete(clientProfileEntries).go();
     });
   }
 }

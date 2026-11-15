@@ -2,7 +2,8 @@ import 'package:drift/drift.dart' show Value;
 
 import '../../models/workout.dart';
 import '../local/app_database.dart';
-import '../remote/fake_api_service.dart';
+import '../remote/api_service.dart';
+import '../../utils/formatters.dart';
 
 /// Repository = penghubung antara API (remote) dan database (local).
 /// Pola offline-first: UI SELALU membaca dari database, bukan langsung dari
@@ -12,56 +13,73 @@ class WorkoutRepository {
   WorkoutRepository(this._db, this._api);
 
   final AppDatabase _db;
-  final FakeApiService _api;
+  final ApiService _api;
 
-  /// Stream dari database -> otomatis update saat data berubah.
   Stream<List<Workout>> watchWorkouts() {
-    return _db.watchAllWorkouts().map(
-          (rows) => rows.map(_toModel).toList(),
-        );
+    return _db.watchAllWorkouts().map((rows) => rows.map(_toModel).toList());
   }
 
-  /// Kirim perubahan lokal yang belum tersinkron, lalu tandai synced = true.
-  /// Jaringan dipanggil SEBELUM transaksi dimulai (bukan di dalamnya).
+  /// Kirim perubahan lokal item server. Latihan buatan pengguna ("local-")
+  /// tidak pernah dikirim karena endpoint-nya belum ada.
   Future<void> pushPending() async {
     final pending = await _db.getUnsyncedWorkouts();
-    if (pending.isEmpty) return;
+    final sent = <WorkoutEntry>[];
 
-    await _api.pushWorkouts(
-      pending
-          .map((e) => {
-                'id': e.id,
-                'name': e.name,
-                'isDone': e.isDone,
-                'updatedAt': e.updatedAt,
-              })
-          .toList(),
-    );
+    for (final row in pending) {
+      if (row.id.startsWith('local-')) continue;
+      try {
+        await _api.patchWorkoutItem(row.id, row.isDone);
+        sent.add(row);
+      } on ApiException catch (e) {
+        if (e.isNotFound) {
+          // Item sudah tidak ada di rencana server -> hapus cache lokalnya.
+          await _db.deleteWorkout(row.id);
+        } else {
+          rethrow;
+        }
+      }
+    }
 
-    await _db.markSynced(pending);
+    if (sent.isNotEmpty) await _db.markSynced(sent);
   }
 
-  /// Ambil dari server lalu simpan (cache) ke database dalam satu transaksi.
-  /// Kalau gagal (offline), exception dilempar ke provider; data lama tetap ada.
+  /// Ambil rencana terbaru dari server lalu simpan (cache) ke database.
+  /// 404 = belum ada rencana -> daftar kosong (empty state), bukan error.
   Future<void> pullFromServer() async {
-    final data = await _api.fetchWorkouts();
+    final plan = await _api.getCurrentWorkoutPlan();
+    final rawItems = plan?['items'];
+    final items = rawItems is List ? rawItems : const [];
     final now = nowUtcMillis();
 
-    final rows = data
-        .map(
-          (json) => WorkoutEntriesCompanion.insert(
-            id: json['id'] as String,
-            name: json['name'] as String,
-            detail: json['detail'] as String,
-            benefit: json['benefit'] as String,
-            lastFetched: now,
-            updatedAt: Value(now),
-            synced: const Value(true),
-          ),
-        )
-        .toList();
+    final rows = <WorkoutEntriesCompanion>[];
+    for (final raw in items) {
+      if (raw is! Map<String, dynamic>) continue;
+      final id = raw['item_id']?.toString();
+      final name = raw['exercise_name']?.toString();
+      if (id == null || name == null) continue;
+
+      final category = raw['category']?.toString();
+      final sets = (raw['sets'] as num?)?.toInt();
+      final reps = (raw['reps'] as num?)?.toInt();
+
+      rows.add(
+        WorkoutEntriesCompanion.insert(
+          id: id,
+          name: name,
+          detail: workoutDetail(sets: sets, reps: reps, category: category),
+          benefit: '',
+          dayOfWeek: Value(raw['day_of_week']?.toString()),
+          category: Value(category),
+          isDone: Value(raw['is_completed'] == true),
+          lastFetched: now,
+          updatedAt: Value(now),
+          synced: const Value(true),
+        ),
+      );
+    }
 
     await _db.upsertServerWorkouts(rows);
+    await _db.deleteStaleServerWorkouts(rows.map((r) => r.id.value).toSet());
   }
 
   Future<void> addWorkout({
@@ -69,21 +87,22 @@ class WorkoutRepository {
     required String name,
     required String detail,
     required String benefit,
-  }) =>
-      _db.insertWorkout(id: id, name: name, detail: detail, benefit: benefit);
+  }) => _db.insertWorkout(id: id, name: name, detail: detail, benefit: benefit);
 
   Future<void> setDone(String id, bool value) => _db.setDone(id, value);
 
   Future<void> deleteWorkout(String id) => _db.deleteWorkout(id);
 
   Workout _toModel(WorkoutEntry e) => Workout(
-        id: e.id,
-        name: e.name,
-        detail: e.detail,
-        benefit: e.benefit,
-        isDone: e.isDone,
-        lastFetched: e.lastFetched,
-        updatedAt: e.updatedAt,
-        synced: e.synced,
-      );
+    id: e.id,
+    name: e.name,
+    detail: e.detail,
+    benefit: e.benefit,
+    dayOfWeek: e.dayOfWeek,
+    category: e.category,
+    isDone: e.isDone,
+    lastFetched: e.lastFetched,
+    updatedAt: e.updatedAt,
+    synced: e.synced,
+  );
 }

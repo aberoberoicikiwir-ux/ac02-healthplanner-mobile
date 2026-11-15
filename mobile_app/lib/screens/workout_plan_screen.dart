@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/workout_provider.dart';
+import '../utils/formatters.dart';
 import 'workout_detail_screen.dart';
 
 class WorkoutPlanScreen extends StatelessWidget {
@@ -19,9 +21,9 @@ class WorkoutPlanScreen extends StatelessWidget {
     );
     if (result == null || !context.mounted) return;
     await context.read<WorkoutProvider>().addWorkout(
-          name: result['name']!,
-          detail: result['detail']!,
-        );
+      name: result['name']!,
+      detail: result['detail']!,
+    );
   }
 
   // Status sinkronisasi (loading / offline / terakhir sinkron) dan
@@ -29,14 +31,20 @@ class WorkoutPlanScreen extends StatelessWidget {
   Widget _buildStatus(WorkoutProvider provider) {
     Widget text;
     if (provider.isLoading) {
-      text = const Text('Menyinkronkan data...',
-          style: TextStyle(color: Colors.white70, fontSize: 12));
+      text = const Text(
+        'Menyinkronkan data...',
+        style: TextStyle(color: Colors.white70, fontSize: 12),
+      );
     } else if (provider.errorMessage != null) {
-      text = Text(provider.errorMessage!,
-          style: const TextStyle(color: Color(0xFFFFD08A), fontSize: 12));
+      text = Text(
+        provider.errorMessage!,
+        style: const TextStyle(color: Color(0xFFFFD08A), fontSize: 12),
+      );
     } else if (provider.lastSynced != null) {
-      text = Text('Terakhir sinkron: ${_formatTime(provider.lastSynced!)}',
-          style: const TextStyle(color: Colors.white60, fontSize: 12));
+      text = Text(
+        'Terakhir sinkron: ${_formatTime(provider.lastSynced!)}',
+        style: const TextStyle(color: Colors.white60, fontSize: 12),
+      );
     } else {
       text = const SizedBox.shrink();
     }
@@ -48,19 +56,26 @@ class WorkoutPlanScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.cloud_upload_outlined,
-                  size: 14, color: Color(0xFFFFD08A)),
+              const Icon(
+                Icons.cloud_upload_outlined,
+                size: 14,
+                color: Color(0xFFFFD08A),
+              ),
               const SizedBox(width: 6),
-              Text('${provider.pendingCount} perubahan belum tersinkron',
-                  style: const TextStyle(
-                      color: Color(0xFFFFD08A), fontSize: 12)),
+              Text(
+                '${provider.pendingCount} perubahan belum tersinkron',
+                style: const TextStyle(color: Color(0xFFFFD08A), fontSize: 12),
+              ),
               TextButton(
                 onPressed: provider.sync,
-                child: const Text('Sinkronkan',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold)),
+                child: const Text(
+                  'Sinkronkan',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
           ),
@@ -78,7 +93,7 @@ class WorkoutPlanScreen extends StatelessWidget {
           child: provider.isLoading
               ? const CircularProgressIndicator(color: Colors.white)
               : const Text(
-                  'Belum ada data latihan.\nTarik ke bawah untuk memuat ulang.',
+                  'Belum ada rencana latihan dari PT.\nRencana mingguanmu sedang disiapkan.\nTarik ke bawah untuk memuat ulang.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70),
                 ),
@@ -115,11 +130,14 @@ class WorkoutPlanScreen extends StatelessWidget {
         child: SafeArea(
           child: Column(
             children: [
-              const Text('Workout Plan',
-                  style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w300,
-                      color: Colors.white)),
+              const Text(
+                'Workout Plan',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w300,
+                  color: Colors.white,
+                ),
+              ),
               const SizedBox(height: 12),
               Image.asset('assets/images/logo.png', height: 50),
               const SizedBox(height: 12),
@@ -141,20 +159,27 @@ class WorkoutPlanScreen extends StatelessWidget {
                                     physics:
                                         const AlwaysScrollableScrollPhysics(),
                                     padding: const EdgeInsets.fromLTRB(
-                                        20, 0, 20, 90),
+                                      20,
+                                      0,
+                                      20,
+                                      90,
+                                    ),
                                     itemCount: workouts.length,
                                     itemBuilder: (context, index) {
                                       final w = workouts[index];
 
                                       final card = Container(
-                                        margin:
-                                            const EdgeInsets.only(bottom: 14),
+                                        margin: const EdgeInsets.only(
+                                          bottom: 14,
+                                        ),
                                         padding: const EdgeInsets.all(12),
                                         decoration: BoxDecoration(
-                                          border:
-                                              Border.all(color: Colors.white38),
-                                          borderRadius:
-                                              BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color: Colors.white38,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
                                         ),
                                         child: ListTile(
                                           leading: Container(
@@ -166,48 +191,73 @@ class WorkoutPlanScreen extends StatelessWidget {
                                                   BorderRadius.circular(12),
                                             ),
                                             child: const Icon(
-                                                Icons.fitness_center,
-                                                color: Colors.tealAccent),
+                                              Icons.fitness_center,
+                                              color: Colors.tealAccent,
+                                            ),
                                           ),
-                                          title: Text(w.name,
-                                              style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.bold)),
-                                          subtitle: Text(w.detail,
-                                              style: const TextStyle(
-                                                  color: Colors.white60)),
+                                          title: Text(
+                                            w.name,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          subtitle: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                w.detail,
+                                                style: const TextStyle(
+                                                  color: Colors.white60,
+                                                ),
+                                              ),
+                                              if (w.dayOfWeek != null ||
+                                                  w.category != null)
+                                                Text(
+                                                  '${dayLabel(w.dayOfWeek)} - ${categoryLabel(w.category)}',
+                                                  style: const TextStyle(
+                                                    color: Colors.white38,
+                                                    fontSize: 11,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
                                           trailing: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               // Ikon awan = belum tersinkron
-                                              if (!w.synced)
+                                              if (!w.synced && !w.isLocal)
                                                 const Padding(
-                                                  padding:
-                                                      EdgeInsets.only(right: 8),
+                                                  padding: EdgeInsets.only(
+                                                    right: 8,
+                                                  ),
                                                   child: Icon(
-                                                      Icons
-                                                          .cloud_upload_outlined,
-                                                      size: 18,
-                                                      color:
-                                                          Color(0xFFFFD08A)),
+                                                    Icons.cloud_upload_outlined,
+                                                    size: 18,
+                                                    color: Color(0xFFFFD08A),
+                                                  ),
                                                 ),
                                               w.isDone
                                                   ? const Icon(
                                                       Icons.check_circle,
-                                                      color:
-                                                          Colors.greenAccent)
+                                                      color: Colors.greenAccent,
+                                                    )
                                                   : const Icon(
                                                       Icons.chevron_right,
-                                                      color: Colors.white70),
+                                                      color: Colors.white70,
+                                                    ),
                                             ],
                                           ),
                                           onTap: () {
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
-                                                  builder: (context) =>
-                                                      WorkoutDetailScreen(
-                                                          workoutId: w.id)),
+                                                builder: (context) =>
+                                                    WorkoutDetailScreen(
+                                                      workoutId: w.id,
+                                                    ),
+                                              ),
                                             );
                                           },
                                         ),
@@ -221,22 +271,26 @@ class WorkoutPlanScreen extends StatelessWidget {
                                         key: ValueKey(w.id),
                                         direction: DismissDirection.endToStart,
                                         background: Container(
-                                          margin:
-                                              const EdgeInsets.only(bottom: 14),
-                                          padding:
-                                              const EdgeInsets.only(right: 24),
+                                          margin: const EdgeInsets.only(
+                                            bottom: 14,
+                                          ),
+                                          padding: const EdgeInsets.only(
+                                            right: 24,
+                                          ),
                                           alignment: Alignment.centerRight,
                                           decoration: BoxDecoration(
                                             color: const Color(0xFFE24B4A),
-                                            borderRadius:
-                                                BorderRadius.circular(16),
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
                                           ),
                                           child: const Icon(
-                                              Icons.delete_outline,
-                                              color: Colors.white),
+                                            Icons.delete_outline,
+                                            color: Colors.white,
+                                          ),
                                         ),
-                                        onDismissed: (_) => workoutProvider
-                                            .deleteWorkout(w.id),
+                                        onDismissed: (_) =>
+                                            workoutProvider.deleteWorkout(w.id),
                                         child: card,
                                       );
                                     },
