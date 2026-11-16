@@ -7,7 +7,7 @@ Capstone Project - Tim A25-CS034
 | Folder | Bagian | Dikerjakan oleh |
 |---|---|---|
 | `mobile_app/` | Mobile App (Flutter) - untuk Klien | M. Ikhsan Panusunan Nasution |
-| `backend/` | Backend (Express.js + MySQL + AI) | *(belum ditentukan)* |
+| `backend/` | Backend (Express.js + MySQL + AI) | Abdullah Abas Bawazir |
 | `web_dashboard/` | Dashboard Web - untuk PT | *(belum ditentukan)* |
 
 ## Tema Proyek
