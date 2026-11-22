@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
   Activity,
@@ -9,6 +10,7 @@ import {
   X,
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { getNotifications } from '../api/notifications'
 import { useAuth } from '../auth/auth-context'
 
 const navigation = [
@@ -31,12 +33,37 @@ function classNames(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ')
 }
 
+function getPageMeta(pathname: string) {
+  if (pathname.startsWith('/clients/') && pathname.endsWith('/review')) {
+    return {
+      title: 'Review Rencana',
+      subtitle: 'Tinjau, setujui, atau override rencana AI.',
+    }
+  }
+
+  if (pathname.startsWith('/clients/')) {
+    return {
+      title: 'Detail Klien',
+      subtitle: 'Profil, rencana, dan progres klien.',
+    }
+  }
+
+  return pageMeta[pathname] ?? pageMeta['/']
+}
+
 export function AppLayout() {
   const { user, logout } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
-  const page = pageMeta[location.pathname] ?? pageMeta['/']
+  const page = getPageMeta(location.pathname)
   const initial = (user?.name?.slice(0, 1) ?? 'P').toUpperCase()
+  const notificationsQuery = useQuery({
+    queryKey: ['notifications'],
+    queryFn: getNotifications,
+    staleTime: 30_000,
+  })
+  const unreadCount =
+    notificationsQuery.data?.filter((item) => !item.is_read).length ?? 0
 
   return (
     <div className="min-h-screen bg-background text-text-primary">
@@ -104,6 +131,11 @@ export function AppLayout() {
               >
                 <Icon size={18} />
                 <span>{item.label}</span>
+                {item.to === '/notifications' && unreadCount > 0 && (
+                  <span className="ml-auto rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent">
+                    {unreadCount}
+                  </span>
+                )}
               </NavLink>
             )
           })}
