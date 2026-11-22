@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/workout_provider.dart';
+import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 
 class WorkoutDetailScreen extends StatelessWidget {
@@ -17,13 +18,7 @@ class WorkoutDetailScreen extends StatelessWidget {
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF8E9AAF), Color(0xFF6E7B94)],
-          ),
-        ),
+        decoration: AppColors.backgroundDecoration,
         child: SafeArea(
           // Consumer: tombol & teks status update begitu ditekan
           // (membaca dari Global State yang bersumber dari database).
@@ -113,8 +108,8 @@ class WorkoutDetailScreen extends StatelessWidget {
                               ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: workout.isDone
-                                    ? Colors.green
-                                    : const Color(0xFF3B82F6),
+                                    ? AppColors.success
+                                    : AppColors.primary,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 14,

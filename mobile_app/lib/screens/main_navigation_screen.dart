@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/daily_provider.dart';
 import '../providers/meal_provider.dart';
 import '../providers/workout_provider.dart';
+import '../theme/app_theme.dart';
 import 'todays_target_tab.dart';
 import 'progres_tab.dart';
 import 'insight_ai_tab.dart';
@@ -53,12 +54,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         child: Container(
           height: 70,
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.88),
+            color: AppColors.surface.withValues(alpha: 0.96),
             borderRadius: BorderRadius.circular(35),
+            border: Border.all(color: AppColors.border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 12,
+                color: Colors.black.withValues(alpha: 0.45),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
@@ -73,7 +76,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   children: [
                     Icon(
                       _navItems[index]['icon'],
-                      color: isSelected ? Colors.white : Colors.white38,
+                      color: isSelected
+                          ? AppColors.accent
+                          : AppColors.textMuted,
                       size: 22,
                     ),
                     const SizedBox(height: 4),
@@ -84,7 +89,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         fontWeight: isSelected
                             ? FontWeight.bold
                             : FontWeight.normal,
-                        color: isSelected ? Colors.white : Colors.white38,
+                        color: isSelected
+                            ? AppColors.textPrimary
+                            : AppColors.textMuted,
                       ),
                     ),
                   ],

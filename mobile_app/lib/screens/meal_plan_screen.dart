@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/meal.dart';
 import '../providers/meal_provider.dart';
+import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 
 class MealPlanScreen extends StatelessWidget {
@@ -21,13 +22,7 @@ class MealPlanScreen extends StatelessWidget {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF8E9AAF), Color(0xFF6E7B94)],
-          ),
-        ),
+        decoration: AppColors.backgroundDecoration,
         child: SafeArea(
           child: Consumer<MealProvider>(
             builder: (context, provider, _) {

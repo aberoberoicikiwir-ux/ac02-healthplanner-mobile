@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/daily_provider.dart';
 import '../providers/workout_provider.dart';
+import '../theme/app_theme.dart';
 import 'meal_plan_screen.dart';
 import 'workout_plan_screen.dart';
 
@@ -41,13 +43,7 @@ class TodaysTargetTab extends StatelessWidget {
     final auth = context.watch<AuthProvider>();
 
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF8E9AAF), Color(0xFF6E7B94)],
-        ),
-      ),
+      decoration: AppColors.backgroundDecoration,
       child: RefreshIndicator(
         onRefresh: context.read<DailyProvider>().loadAll,
         child: CustomScrollView(
@@ -56,12 +52,14 @@ class TodaysTargetTab extends StatelessWidget {
             SliverAppBar(
               backgroundColor: Colors.transparent,
               elevation: 0,
+              foregroundColor: Colors.white,
+              systemOverlayStyle: SystemUiOverlayStyle.light,
               expandedHeight: 160,
               pinned: true,
               flexibleSpace: FlexibleSpaceBar(
                 title: const Text(
                   'Health & Workout Planner',
-                  style: TextStyle(fontSize: 16),
+                  style: TextStyle(fontSize: 16, color: Colors.white),
                 ),
                 background: Padding(
                   padding: const EdgeInsets.only(top: 60),
@@ -135,7 +133,7 @@ class TodaysTargetTab extends StatelessWidget {
                       icon: const Icon(Icons.edit_note),
                       label: const Text('Catat Langkah / Air / Berat Hari Ini'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1E3A8A),
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),

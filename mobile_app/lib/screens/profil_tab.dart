@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/profile_provider.dart';
 import '../providers/settings_provider.dart';
+import '../theme/app_theme.dart';
 import 'health_profile_screen.dart';
 
 class ProfilTab extends StatelessWidget {
@@ -161,13 +162,7 @@ class ProfilTab extends StatelessWidget {
     final profile = context.watch<ProfileProvider>();
 
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF8E9AAF), Color(0xFF6E7B94)],
-        ),
-      ),
+      decoration: AppColors.backgroundDecoration,
       child: SafeArea(
         child: RefreshIndicator(
           onRefresh: profile.load,
@@ -432,7 +427,7 @@ class ProfilTab extends StatelessWidget {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeThumbColor: const Color(0xFF3B82F6),
+            activeThumbColor: AppColors.primary,
           ),
         ],
       ),
