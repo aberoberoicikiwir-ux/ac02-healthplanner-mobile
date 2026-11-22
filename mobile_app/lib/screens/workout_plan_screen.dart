@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/workout_provider.dart';
+import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import 'workout_detail_screen.dart';
 
@@ -114,19 +115,13 @@ class WorkoutPlanScreen extends StatelessWidget {
       ),
       // Tombol "+" : tambah latihan tambahan di luar rencana
       floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF3B82F6),
+        backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         onPressed: () => _showAddDialog(context),
         child: const Icon(Icons.add),
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF8E9AAF), Color(0xFF6E7B94)],
-          ),
-        ),
+        decoration: AppColors.backgroundDecoration,
         child: SafeArea(
           child: Column(
             children: [

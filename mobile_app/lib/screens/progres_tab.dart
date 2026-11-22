@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/daily_provider.dart';
 import '../providers/profile_provider.dart';
+import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 
 class ProgresTab extends StatelessWidget {
@@ -16,13 +17,7 @@ class ProgresTab extends StatelessWidget {
     final stepPoints = daily.stepPoints;
 
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF8E9AAF), Color(0xFF6E7B94)],
-        ),
-      ),
+      decoration: AppColors.backgroundDecoration,
       child: SafeArea(
         child: RefreshIndicator(
           onRefresh: daily.loadAll,

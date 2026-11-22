@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/profile_provider.dart';
+import '../theme/app_theme.dart';
 import 'main_navigation_screen.dart';
 
 class HealthProfileGate extends StatefulWidget {
@@ -78,7 +79,7 @@ class _ProfileError extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
+              const Icon(Icons.cloud_off, size: 48, color: AppColors.textMuted),
               const SizedBox(height: 12),
               Text(message, textAlign: TextAlign.center),
               const SizedBox(height: 16),
@@ -234,7 +235,7 @@ class _HealthProfileFormScreenState extends State<HealthProfileFormScreen> {
         children: [
           const Text(
             'Data ini dipakai untuk menyusun rencana latihan dan menu yang sesuai.',
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(color: AppColors.textMuted),
           ),
           const SizedBox(height: 20),
           _numberField(_weightCurrent, 'Berat Badan (kg)'),
@@ -304,7 +305,7 @@ class _HealthProfileFormScreenState extends State<HealthProfileFormScreen> {
             width: double.infinity,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF3B82F6),
+                backgroundColor: AppColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
               onPressed: _saving ? null : _submit,

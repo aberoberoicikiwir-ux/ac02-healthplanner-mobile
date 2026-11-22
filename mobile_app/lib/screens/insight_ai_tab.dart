@@ -7,6 +7,7 @@ import '../models/insight_notification.dart';
 import '../providers/coach_provider.dart';
 import '../providers/insight_provider.dart';
 import '../providers/settings_provider.dart';
+import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 
 class InsightAiTab extends StatefulWidget {
@@ -31,13 +32,7 @@ class _InsightAiTabState extends State<InsightAiTab> {
     return DefaultTabController(
       length: 2,
       child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF8E9AAF), Color(0xFF6E7B94)],
-          ),
-        ),
+        decoration: AppColors.backgroundDecoration,
         child: SafeArea(
           child: Column(
             children: [
@@ -400,7 +395,7 @@ class _CoachChatState extends State<_CoachChat> {
                           hintText: 'Tanya Coach...',
                           hintStyle: const TextStyle(color: Colors.white54),
                           filled: true,
-                          fillColor: Colors.white.withValues(alpha: 0.12),
+                          fillColor: AppColors.surfaceAlt,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 14,
                             vertical: 12,
@@ -421,7 +416,7 @@ class _CoachChatState extends State<_CoachChat> {
                           ? null
                           : _send,
                       style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFF3B82F6),
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
                       ),
                       icon: provider.sending
@@ -487,7 +482,7 @@ class _CoachChatState extends State<_CoachChat> {
         padding: const EdgeInsets.all(12),
         constraints: const BoxConstraints(maxWidth: 300),
         decoration: BoxDecoration(
-          color: const Color(0xFF3B82F6).withValues(alpha: pending ? 0.6 : 1),
+          color: AppColors.primary.withValues(alpha: pending ? 0.6 : 1),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Text(

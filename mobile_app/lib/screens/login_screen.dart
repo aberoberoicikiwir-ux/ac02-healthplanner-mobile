@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -51,14 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        // Gradient abu ke biru keabuan, sesuai desain Figma
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF8E9AAF), Color(0xFF6E7B94)],
-          ),
-        ),
+        decoration: AppColors.backgroundDecoration,
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
@@ -134,7 +128,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(30),
                           gradient: const LinearGradient(
-                            colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
+                            colors: [AppColors.primaryDark, AppColors.primary],
                           ),
                         ),
                         child: ElevatedButton(
@@ -188,6 +182,7 @@ class _LoginScreenState extends State<LoginScreen> {
       obscureText: obscure,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
+        filled: false,
         prefixIcon: Icon(icon, color: Colors.white70),
         suffixIcon: suffixIcon,
         hintText: hint,
