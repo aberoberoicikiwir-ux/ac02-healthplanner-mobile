@@ -9,6 +9,7 @@
     "test:ai": "node --test tests/ai.test.js",
     "test:plan": "node --test tests/plan.test.js",
     "test:coach": "node --test tests/coach.test.js",
+    "test:query": "node --test tests/ptQuery.test.js",
     "seed:demo": "node scripts/seed-demo.js",
     "demo:approve": "node scripts/demo-approve.js"
   },
@@ -18,6 +19,7 @@
     "dotenv": "^16.6.1",
     "express": "^4.22.3",
     "express-validator": "^7.3.2",
+    "joi": "^18.3.2",
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.24.4"
   },

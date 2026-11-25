@@ -8,7 +8,7 @@ Capstone Project - Tim A25-CS034
 |---|---|---|
 | `mobile_app/` | Mobile App (Flutter) + AI - | M. Ikhsan Panusunan Nasution |
 | `backend/` | Backend (Express.js + MySQL + AI) | Abdullah Abas Bawazir |
-| `web_dashboard/` | Dashboard Web - untuk PT | M. Ikhsan Panusunan Nasution |
+| `frontend/` | Dashboard Web Next.js App Router - untuk PT | M. Ikhsan Panusunan Nasution |
 
 ## Tema Proyek
 Sistem monitoring kebugaran dengan modul Klien dan PT (Personal Trainer). PT memantau progres klien, Klien menerima workout plan & meal plan berbasis AI.
