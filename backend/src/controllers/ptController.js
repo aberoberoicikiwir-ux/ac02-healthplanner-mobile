@@ -1,117 +1,83 @@
-const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const pool = require('../config/db');
 const AiError = require('../services/ai/AiError');
 const { reviewAnalysis } = require('../services/planMaterializer');
 const { generateForClient } = require('./aiController');
-
-// PT hanya boleh mengakses klien yang di-assign ke dia (assigned_pt_id).
-// Tanpa pengecekan ini, PT mana pun bisa melihat/mengubah data klien PT lain.
-async function isMyClient(ptUserId, clientId) {
-  const [rows] = await pool.query(
-    `SELECT 1 FROM client_profiles WHERE client_id = ? AND assigned_pt_id = ?`,
-    [clientId, ptUserId]
-  );
-  return rows.length > 0;
-}
-
-// Cek analisis AI ini milik klien bimbingan PT yang login.
-async function isMyAnalysis(ptUserId, analysisId) {
-  const [rows] = await pool.query(
-    `SELECT 1 FROM ai_analysis_results a
-     JOIN client_profiles cp ON cp.client_id = a.client_id
-     WHERE a.analysis_id = ? AND cp.assigned_pt_id = ?`,
-    [analysisId, ptUserId]
-  );
-  return rows.length > 0;
-}
+const ptModel = require('../models/ptModel');
 
 const FORBIDDEN = { message: 'Klien/analisis ini bukan bimbinganmu.' };
 
-// GET /api/pt/clients?status=active
+// GET /api/pt/clients?status=active&page=1&limit=10&search=&sort=name&order=asc
 const getMyClients = asyncHandler(async (req, res) => {
-  const status = req.query.status || 'active';
-
-  const [rows] = await pool.query(
-    `SELECT cp.client_id, cp.status, cp.weight_current, cp.weight_target, u.name, u.email
-     FROM client_profiles cp
-     JOIN users u ON u.user_id = cp.user_id
-     WHERE cp.assigned_pt_id = ? AND cp.status = ?`,
-    [req.user.user_id, status]
-  );
-
-  res.json(rows);
+  const result = await ptModel.listClients(req.user.user_id, req.query);
+  res.json(result);
 });
 
 // GET /api/pt/clients/:clientId
 const getClientDetail = asyncHandler(async (req, res) => {
-  const { clientId } = req.params;
-
-  const [rows] = await pool.query(
-    `SELECT cp.*, u.name, u.email
-     FROM client_profiles cp
-     JOIN users u ON u.user_id = cp.user_id
-     WHERE cp.client_id = ? AND cp.assigned_pt_id = ?`,
-    [clientId, req.user.user_id]
+  const client = await ptModel.getClientDetail(
+    req.user.user_id,
+    req.params.clientId,
   );
 
-  if (rows.length === 0) {
-    return res.status(404).json({ message: 'Klien tidak ditemukan atau bukan bimbinganmu.' });
+  if (!client) {
+    return res.status(404).json({
+      message: 'Klien tidak ditemukan atau bukan bimbinganmu.',
+    });
   }
-  res.json(rows[0]);
+
+  res.json(client);
 });
 
 // GET /api/pt/clients/:clientId/progress?from=&to=
 const getClientProgress = asyncHandler(async (req, res) => {
-  const { clientId } = req.params;
   const { from, to } = req.query;
+  const progress = await ptModel.getClientProgress(
+    req.user.user_id,
+    req.params.clientId,
+    from,
+    to,
+  );
 
-  if (!(await isMyClient(req.user.user_id, clientId))) {
+  if (progress === null) {
     return res.status(403).json(FORBIDDEN);
   }
 
-  const [rows] = await pool.query(
-    `SELECT log_date, weight_kg, steps FROM daily_logs
-     WHERE client_id = ? AND log_date BETWEEN ? AND ?
-     ORDER BY log_date ASC`,
-    [clientId, from || '1970-01-01', to || '2999-12-31']
-  );
-
-  res.json(rows);
+  res.json(progress);
 });
 
 // GET /api/pt/clients/:clientId/ai-analysis/current
 const getCurrentAiAnalysis = asyncHandler(async (req, res) => {
-  const { clientId } = req.params;
-
-  if (!(await isMyClient(req.user.user_id, clientId))) {
-    return res.status(403).json(FORBIDDEN);
-  }
-
-  const [rows] = await pool.query(
-    `SELECT * FROM ai_analysis_results
-     WHERE client_id = ?
-     ORDER BY week_start_date DESC LIMIT 1`,
-    [clientId]
+  const analysis = await ptModel.getCurrentAnalysis(
+    req.user.user_id,
+    req.params.clientId,
   );
 
-  if (rows.length === 0) {
+  if (analysis === null) {
+    if (!(await ptModel.isMyClient(req.user.user_id, req.params.clientId))) {
+      return res.status(403).json(FORBIDDEN);
+    }
+
     return res.status(404).json({ message: 'Belum ada hasil analisis AI.' });
   }
-  res.json(rows[0]);
+
+  res.json(analysis);
 });
 
-// Membalas error AiError (404/409/422) dengan status dan detailnya; error lain dilempar ke errorHandler.
-function replyAiError(res, e) {
-  if (e instanceof AiError) return res.status(e.status).json({ message: e.message, details: e.details });
-  throw e;
+function replyAiError(res, error) {
+  if (error instanceof AiError) {
+    return res
+      .status(error.status)
+      .json({ message: error.message, details: error.details });
+  }
+  throw error;
 }
 
 // PATCH /api/pt/ai-analysis/:analysisId/approve
-// Menyetujui rencana AI apa adanya DAN menerapkannya ke workout/meal plan + target klien.
 const approveAiAnalysis = asyncHandler(async (req, res) => {
   const { analysisId } = req.params;
 
-  if (!(await isMyAnalysis(req.user.user_id, analysisId))) {
+  if (!(await ptModel.isMyAnalysis(req.user.user_id, analysisId))) {
     return res.status(403).json(FORBIDDEN);
   }
 
@@ -123,23 +89,23 @@ const approveAiAnalysis = asyncHandler(async (req, res) => {
       decision: 'approve',
     });
     res.json({ message: 'Rencana AI disetujui.', ...result });
-  } catch (e) {
-    return replyAiError(res, e);
+  } catch (error) {
+    return replyAiError(res, error);
   }
 });
 
 // PATCH /api/pt/ai-analysis/:analysisId/override
-// body: { final_output: { feedback, targets, workout, meals } }  (format sama dengan hasil AI)
-// final_output divalidasi ulang; kalau lolos, diterapkan ke workout/meal plan + target klien.
 const overrideAiAnalysis = asyncHandler(async (req, res) => {
   const { analysisId } = req.params;
-  const { final_output } = req.body || {};
+  const { final_output: finalOutput } = req.body || {};
 
-  if (!final_output || typeof final_output !== 'object') {
-    return res.status(400).json({ message: 'final_output wajib diisi (berupa objek JSON) untuk override.' });
+  if (!finalOutput || typeof finalOutput !== 'object') {
+    return res.status(400).json({
+      message: 'final_output wajib diisi (berupa objek JSON) untuk override.',
+    });
   }
 
-  if (!(await isMyAnalysis(req.user.user_id, analysisId))) {
+  if (!(await ptModel.isMyAnalysis(req.user.user_id, analysisId))) {
     return res.status(403).json(FORBIDDEN);
   }
 
@@ -149,31 +115,38 @@ const overrideAiAnalysis = asyncHandler(async (req, res) => {
       analysisId: Number(analysisId),
       ptUserId: req.user.user_id,
       decision: 'override',
-      finalOutput: final_output,
+      finalOutput,
     });
     res.json({ message: 'Rencana AI berhasil di-override.', ...result });
-  } catch (e) {
-    return replyAiError(res, e);
+  } catch (error) {
+    return replyAiError(res, error);
   }
 });
 
 // POST /api/pt/clients/:clientId/generate-plan
-// body (opsional): { week_start_date: "YYYY-MM-DD" (Senin) }  default: Senin berikutnya
-// PT memicu pembuatan rencana AI (status pending) untuk klien bimbingannya.
 const generatePlan = asyncHandler(async (req, res) => {
   const clientId = Number(req.params.clientId);
+
   if (!Number.isInteger(clientId) || clientId < 1) {
-    return res.status(400).json({ message: 'clientId harus berupa bilangan bulat positif.' });
+    return res.status(400).json({
+      message: 'clientId harus berupa bilangan bulat positif.',
+    });
   }
 
-  if (!(await isMyClient(req.user.user_id, clientId))) {
+  if (!(await ptModel.isMyClient(req.user.user_id, clientId))) {
     return res.status(403).json(FORBIDDEN);
   }
 
-  const r = await generateForClient(clientId, (req.body || {}).week_start_date);
-  // Detail kegagalan penyedia AI (502) bisa memuat info internal: jangan diteruskan ke PT.
-  if (r.status === 502) delete r.body.details;
-  res.status(r.status).json(r.body);
+  const result = await generateForClient(
+    clientId,
+    (req.body || {}).week_start_date,
+  );
+
+  if (result.status === 502) {
+    delete result.body.details;
+  }
+
+  res.status(result.status).json(result.body);
 });
 
 module.exports = {

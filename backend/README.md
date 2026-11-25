@@ -91,6 +91,12 @@ npm run test:ai
 npm run test:coach
 ```
 
+**4. Tes validasi query PT (6 tes, tanpa database)** - menguji Joi untuk pagination, limit, search, dan whitelist sort/order.
+
+```bash
+npm run test:query
+```
+
 Bagian yang butuh database memakai database terpisah `healthmaxxing_test` (diubah lewat `TEST_DB_NAME`, nama wajib berakhiran `_test`) yang dibuat dari schema lalu dihapus otomatis. Database utama dan penghitung ID-nya tidak tersentuh, jadi `test_all.sh` tetap bisa dijalankan setelahnya.
 
 > Dua log error di terminal server saat `test_all.sh` berjalan (`Duplicate entry`, `SyntaxError ... JSON`) itu wajar: dipicu sengaja oleh tes validasi.
@@ -174,6 +180,23 @@ backend/
 
 Lengkapnya (method, path, body, tabel, aturan validasi, format rencana AI) ada di
 [`docs/healthmaxxing_api_endpoints.md`](docs/healthmaxxing_api_endpoints.md). Semua endpoint selain register, login, health check, dan endpoint internal memerlukan `Authorization: Bearer <token>`.
+
+**Pagination/search daftar klien PT**:
+
+```text
+GET /api/pt/clients?page=1&limit=10&search=&status=active&sort=name&order=asc
+```
+
+Respons:
+
+```json
+{
+  "data": [],
+  "meta": { "page": 1, "limit": 10, "total": 0, "total_pages": 0 }
+}
+```
+
+Query divalidasi dengan Joi. `sort` dibatasi ke `client_id`, `name`, `weight_current`, `weight_target`, `status`; `order` hanya `asc`/`desc`. Query SQL memakai `LIKE` dengan escape dan `LIMIT/OFFSET` dengan placeholder. Salinan schema tersedia di `database.sql`.
 
 ## Keamanan umum yang sudah diterapkan
 

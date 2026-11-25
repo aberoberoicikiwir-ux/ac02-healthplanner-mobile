@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@source "../app/**/*.{ts,tsx}";
+@source "../components/**/*.{ts,tsx}";
+@source "../lib/**/*.{ts,tsx}";
+
+@theme {
+  --color-background: #0b0f14;
+  --color-background-bottom: #121a24;
+  --color-surface: #151c24;
+  --color-surface-alt: #1c2530;
+  --color-border: #2b3644;
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #94a3b8;
+  --color-primary: #2563eb;
+  --color-primary-dark: #1d4ed8;
+  --color-accent: #64ffda;
+  --color-warning: #ffd08a;
+  --color-danger: #f09595;
+  --color-success: #4ade80;
+  --font-sans: var(--font-inter);
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-width: 320px;
+    background: var(--color-background);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: rgba(100, 255, 218, 0.25);
+  }
+}
+
+@layer components {
+  .app-glow {
+    background-image:
+      radial-gradient(circle at 85% 5%, rgba(37, 99, 235, 0.16), transparent 30%),
+      radial-gradient(circle at 10% 95%, rgba(100, 255, 218, 0.07), transparent 28%);
+  }
+
+  .panel {
+    @apply rounded-2xl border border-border bg-surface/90 shadow-xl shadow-black/10 backdrop-blur;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-border bg-surface-alt px-4 py-3 text-sm text-text-primary outline-none transition placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+}
